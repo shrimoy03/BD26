@@ -1,0 +1,215 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="MerchantTerminal.App"
+             RequestedThemeVariant="Dark">
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <!-- Design tokens: dark theme (default) -->
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="Bg" Color="#111318" />
+                    <SolidColorBrush x:Key="Panel" Color="#1a1e25" />
+                    <SolidColorBrush x:Key="Panel2" Color="#22272f" />
+                    <SolidColorBrush x:Key="Panel3" Color="#2a3038" />
+                    <SolidColorBrush x:Key="Line" Color="#313841" />
+                    <SolidColorBrush x:Key="Text" Color="#eef1f5" />
+                    <SolidColorBrush x:Key="Dim" Color="#98a2ae" />
+                    <SolidColorBrush x:Key="Accent" Color="#c9a86a" />
+                    <SolidColorBrush x:Key="AccentHover" Color="#dbba7a" />
+                    <SolidColorBrush x:Key="AccentInk" Color="#1a1508" />
+                    <SolidColorBrush x:Key="Pos" Color="#5cc294" />
+                    <SolidColorBrush x:Key="Danger" Color="#e57a6e" />
+                </ResourceDictionary>
+                <!-- Design tokens: light theme -->
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="Bg" Color="#efede8" />
+                    <SolidColorBrush x:Key="Panel" Color="#ffffff" />
+                    <SolidColorBrush x:Key="Panel2" Color="#f6f4f0" />
+                    <SolidColorBrush x:Key="Panel3" Color="#eceae4" />
+                    <SolidColorBrush x:Key="Line" Color="#dcd8d0" />
+                    <SolidColorBrush x:Key="Text" Color="#191b1f" />
+                    <SolidColorBrush x:Key="Dim" Color="#6a7076" />
+                    <SolidColorBrush x:Key="Accent" Color="#8f6f38" />
+                    <SolidColorBrush x:Key="AccentHover" Color="#a5813f" />
+                    <SolidColorBrush x:Key="AccentInk" Color="#fffdf7" />
+                    <SolidColorBrush x:Key="Pos" Color="#1f8a5f" />
+                    <SolidColorBrush x:Key="Danger" Color="#b5453a" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+            <SolidColorBrush x:Key="Scrim" Color="#9E08090C" />
+            <FontFamily x:Key="Serif">avares://MerchantTerminal/Assets/Fonts#Instrument Serif</FontFamily>
+            <FontFamily x:Key="Sans">avares://MerchantTerminal/Assets/Fonts#IBM Plex Sans</FontFamily>
+            <FontFamily x:Key="Mono">avares://MerchantTerminal/Assets/Fonts#IBM Plex Mono</FontFamily>
+        </ResourceDictionary>
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme />
+
+        <!-- ===== Typography helpers ===== -->
+        <Style Selector="TextBlock.serif">
+            <Setter Property="FontFamily" Value="{StaticResource Serif}" />
+        </Style>
+        <Style Selector="TextBlock.mono">
+            <Setter Property="FontFamily" Value="{StaticResource Mono}" />
+        </Style>
+        <!-- 9.5px uppercase tracked label -->
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="9.5" />
+            <Setter Property="LetterSpacing" Value="1.5" />
+            <Setter Property="Foreground" Value="{DynamicResource Dim}" />
+        </Style>
+        <Style Selector="TextBlock.dim">
+            <Setter Property="Foreground" Value="{DynamicResource Dim}" />
+        </Style>
+
+        <!-- ===== Button base: kill Fluent chrome ===== -->
+        <Style Selector="Button.pos">
+            <Setter Property="FontFamily" Value="{StaticResource Sans}" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+            <Setter Property="Background" Value="{DynamicResource Panel2}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text}" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.pos:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Panel2}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        </Style>
+        <Style Selector="Button.pos:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Panel3}" />
+        </Style>
+
+        <!-- Quick keys / function keys: hover fills panel3 -->
+        <Style Selector="Button.key">
+            <Setter Property="CornerRadius" Value="10" />
+        </Style>
+        <Style Selector="Button.key:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Panel3}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+        </Style>
+
+        <!-- Tender tiles: panel background, hover panel2 -->
+        <Style Selector="Button.tile">
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Background" Value="{DynamicResource Panel}" />
+        </Style>
+        <Style Selector="Button.tile:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Panel2}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+        </Style>
+
+        <!-- Accent CTA -->
+        <Style Selector="Button.cta">
+            <Setter Property="FontFamily" Value="{StaticResource Sans}" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource Accent}" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentInk}" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.cta:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AccentHover}" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentInk}" />
+        </Style>
+
+        <!-- Transparent/ghost secondary button -->
+        <Style Selector="Button.ghost">
+            <Setter Property="FontFamily" Value="{StaticResource Sans}" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource Dim}" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.ghost:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        </Style>
+
+        <!-- Qty stepper 28x28 -->
+        <Style Selector="Button.stepper">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- Clickable rows (basket lines, customer strip/results): transparent, hover panel2 -->
+        <Style Selector="Button.row">
+            <Setter Property="FontFamily" Value="{StaticResource Sans}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource Text}" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.row:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Panel2}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text}" />
+        </Style>
+        <Style Selector="Button.row:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Panel2}" />
+        </Style>
+        <Style Selector="Button.row.selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Panel2}" />
+        </Style>
+
+        <!-- Promo rows -->
+        <Style Selector="Button.promo-row">
+            <Setter Property="FontFamily" Value="{StaticResource Sans}" />
+            <Setter Property="Background" Value="{DynamicResource Panel2}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="18,16" />
+            <Setter Property="Foreground" Value="{DynamicResource Text}" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.promo-row:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Panel2}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+        </Style>
+        <Style Selector="Button.promo-row.applied /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="BorderBrush" Value="{DynamicResource Pos}" />
+        </Style>
+
+        <!-- Promo state text colors (blocked overrides apply; applied wins) -->
+        <Style Selector="TextBlock.state-apply">
+            <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+        </Style>
+        <Style Selector="TextBlock.state-blocked">
+            <Setter Property="Foreground" Value="{DynamicResource Dim}" />
+        </Style>
+        <Style Selector="TextBlock.state-applied">
+            <Setter Property="Foreground" Value="{DynamicResource Pos}" />
+        </Style>
+
+        <!-- Invisible scrim click-catcher -->
+        <Style Selector="Button.scrim">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+        </Style>
+        <Style Selector="Button.scrim:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.scrim:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+    </Application.Styles>
+</Application>

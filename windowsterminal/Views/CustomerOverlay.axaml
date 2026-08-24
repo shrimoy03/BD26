@@ -1,0 +1,78 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MerchantTerminal.ViewModels"
+             xmlns:m="using:MerchantTerminal.Models"
+             x:Class="MerchantTerminal.Views.CustomerOverlay"
+             x:DataType="vm:MainViewModel">
+
+    <Panel Background="{StaticResource Scrim}">
+        <Button Classes="scrim" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                Command="{Binding CloseOverlayCommand}" />
+
+        <Border Width="720" HorizontalAlignment="Center" VerticalAlignment="Center"
+                Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Line}"
+                BorderThickness="1" CornerRadius="16" ClipToBounds="True"
+                BoxShadow="0 18 44 0 #73000000">
+            <StackPanel>
+                <!-- Header + search -->
+                <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" Padding="26,22,26,18">
+                    <StackPanel Spacing="14">
+                        <TextBlock Classes="serif" Text="Customer lookup" FontSize="26" />
+                        <Border Height="44" Background="{DynamicResource Panel2}"
+                                BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="8">
+                            <StackPanel Orientation="Horizontal" Margin="14,0" VerticalAlignment="Center">
+                                <TextBlock Classes="mono dim" Text="okon" FontSize="14" />
+                                <TextBlock Classes="mono" Text="|" FontSize="14" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <!-- Results -->
+                <ScrollViewer MaxHeight="420">
+                    <ItemsControl ItemsSource="{Binding Customers}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="m:CustomerRecord">
+                                <Button Classes="row"
+                                        Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).PickCustomerCommand}"
+                                        CommandParameter="{Binding}">
+                                    <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1"
+                                            Padding="26,16">
+                                        <DockPanel>
+                                            <Border DockPanel.Dock="Left" Width="40" Height="40" CornerRadius="20"
+                                                    Background="{DynamicResource Panel3}" Margin="0,0,16,0">
+                                                <TextBlock Classes="serif" Text="{Binding Initials}" FontSize="16"
+                                                           Foreground="{DynamicResource Accent}"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                            <StackPanel DockPanel.Dock="Right" Spacing="4" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Tier}" FontSize="11" LetterSpacing="1.3"
+                                                           Foreground="{DynamicResource Accent}" HorizontalAlignment="Right" />
+                                                <TextBlock Text="{Binding Points}" FontSize="12"
+                                                           Foreground="{DynamicResource Dim}" HorizontalAlignment="Right" />
+                                            </StackPanel>
+                                            <StackPanel Spacing="4" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="Medium" />
+                                                <TextBlock Classes="mono dim" Text="{Binding Contact}" FontSize="12" />
+                                            </StackPanel>
+                                        </DockPanel>
+                                    </Border>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <!-- Footer -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="26,16">
+                    <Button Classes="ghost" Height="44" Padding="22,0" Command="{Binding CloseOverlayCommand}">
+                        <TextBlock Text="Cancel" FontSize="13" />
+                    </Button>
+                    <Button Classes="pos" Height="44" Padding="22,0" Command="{Binding CloseOverlayCommand}">
+                        <TextBlock Text="Enrol new customer" FontSize="13" />
+                    </Button>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Panel>
+</UserControl>

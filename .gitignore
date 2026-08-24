@@ -1,0 +1,11 @@
+# .NET
+bin/
+obj/
+*.user
+
+# macOS
+.DS_Store
+
+# IDE
+.vs/
+.idea/

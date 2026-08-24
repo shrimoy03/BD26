@@ -1,0 +1,34 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MerchantTerminal.ViewModels"
+        xmlns:v="using:MerchantTerminal.Views"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1600" d:DesignHeight="1000"
+        x:Class="MerchantTerminal.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Width="1280" Height="800"
+        Background="{DynamicResource Bg}"
+        FontFamily="{StaticResource Sans}"
+        Title="Meridian &amp; Co. POS">
+
+    <Design.DataContext>
+        <vm:MainViewModel />
+    </Design.DataContext>
+
+    <Window.KeyBindings>
+        <KeyBinding Gesture="F2" Command="{Binding ItemSearchCommand}" />
+        <KeyBinding Gesture="F4" Command="{Binding OpenPromosCommand}" />
+        <KeyBinding Gesture="F6" Command="{Binding PriceOverrideCommand}" />
+    </Window.KeyBindings>
+
+    <Viewbox Stretch="Uniform">
+        <Panel x:Name="RootCanvas" Width="1600" Height="1000" Background="{DynamicResource Bg}">
+            <v:RegisterView />
+            <v:CustomerOverlay IsVisible="{Binding ShowCustomer}" />
+            <v:PromosOverlay IsVisible="{Binding ShowPromos}" />
+            <v:TenderOverlay IsVisible="{Binding ShowTender}" />
+            <v:DoneOverlay IsVisible="{Binding ShowDone}" />
+        </Panel>
+    </Viewbox>
+</Window>
