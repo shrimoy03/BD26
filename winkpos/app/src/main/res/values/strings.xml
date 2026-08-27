@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Bloomingdale\'s</string>
+    <string name="wordmark">bloomingdale\'s</string>
+
+    <!-- Welcome -->
+    <string name="welcome">Welcome</string>
+    <string name="bconnected_b">b</string>
+    <string name="bconnected_rest">connected</string>
+    <string name="bconnected_caption">Just scan your face or palm to pay or scan the QR code to login to your <b>b Connected Bloomingdales</b> Account</string>
+    <string name="signup">Signup</string>
+    <string name="face">Face</string>
+    <string name="palm">Palm</string>
+    <string name="powered_by">Powered by</string>
+    <string name="wink">w;nk</string>
+    <string name="camera_permission_needed">Camera permission is required for biometric check-in.</string>
+    <string name="missing_credentials">WinkPay credentials missing — set WINK_CLIENT_ID / WINK_MERCHANT_CLIENT_SECRET in local.properties.</string>
+    <string name="checkin_failed">Check-in failed: %1$s</string>
+    <string name="signup_hint">Scan the QR code with your phone to create a b Connected account.</string>
+
+    <!-- Dashboard -->
+    <string name="hello_name">Hello, %1$s</string>
+    <string name="sign_out">Sign Out</string>
+    <string name="loyallist">LOYALLIST</string>
+    <string name="points">1,300 Points</string>
+    <string name="points_caption">Points from your purchases\nadd up to Rewards</string>
+    <string name="points_upgrade">Spend $2,700.00 more at Bloomingdale\'s this year to get upgraded!</string>
+    <string name="rewards">REWARDS</string>
+    <string name="rewards_amount">$10.00</string>
+    <string name="redeem">REDEEM</string>
+    <string name="offer1_title">10% Off</string>
+    <string name="offer1_desc">On select regular priced items with your Bloomingdales loyallist Card.</string>
+    <string name="offer2_title">TRIPLE\nPOINTS</string>
+    <string name="offer2_desc">On select furniture labeled loyallist triple points</string>
+    <string name="offer3_title">POWER\nPOINTS</string>
+    <string name="offer3_desc">Get Loyallist Power Points for every $1,000 you spend</string>
+    <string name="offer_ends">Ends: 06/02/2025\nExclusions Apply</string>
+    <string name="your_items">Your Items</string>
+    <string name="order_summary">Order Summary</string>
+    <string name="empty_cart_hint">Tap the cart to scan demo items</string>
+    <string name="subtotal">Subtotal</string>
+    <string name="taxes">Taxes</string>
+    <string name="reward_line">Rewards</string>
+    <string name="reward_credit">-$10.00</string>
+    <string name="total">Total</string>
+    <string name="preferred_payment">Preferred payment method:</string>
+    <string name="edit">Edit</string>
+    <string name="card_brand_line">bloomingdale\'s <b>loyallist</b></string>
+    <string name="no_card_on_file">No card on file</string>
+    <string name="pay">Pay</string>
+    <string name="processing">Processing…</string>
+    <string name="payment_failed">There was a problem processing your payment.</string>
+    <string name="reward_applied">$10.00 Reward applied</string>
+    <string name="reward_needs_items">Scan items before redeeming the Reward.</string>
+    <string name="offer_applied">Offer will be applied at the register.</string>
+    <string name="all_items_scanned">All demo items are already in the cart.</string>
+
+    <string name="settings">Capture settings</string>
+    <string name="section_face">Face</string>
+    <string name="section_palm">Palm</string>
+    <string name="section_sdk">SDK</string>
+    <string name="hint_auto">auto</string>
+    <string name="hint_adaptive">adaptive</string>
+    <string name="save">Save</string>
+    <string name="close">Close</string>
+    <string name="reset_defaults">Reset</string>
+    <string name="settings_saved">Settings saved</string>
+    <string name="settings_saved_restart">Settings saved — debugLogging applies after app restart</string>
+    <string name="settings_reset">Settings reset to defaults</string>
+    <string name="settings_note">Face/Palm values apply to the next check-in. Palm/SDK switches apply live. debugLogging needs an app restart.</string>
+
+    <!-- Scan screen -->
+    <string name="scan_your_face">Scan your face</string>
+    <string name="scan_subtitle">Scan to login to your bConnected account</string>
+    <string name="go_back">‹  Go Back</string>
+    <string name="scan_success">Success!</string>
+    <string name="try_again">TRY AGAIN</string>
+    <string name="scan_bad_response">Unexpected server response — please try again.</string>
+
+    <!-- Thank you -->
+    <string name="thanks">Thanks for Shopping\nwith us</string>
+    <string name="receipt_line">Paid %1$s · Transaction %2$s</string>
+</resources>

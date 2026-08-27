@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bloom_black">#0B0B0B</color>
+    <color name="white">#FFFFFF</color>
+    <color name="page_grey">#EDEDED</color>
+    <color name="panel_grey">#F5F5F5</color>
+    <color name="loyallist_purple">#5C2D91</color>
+    <color name="text_dark">#141414</color>
+    <color name="text_grey">#6E6E6E</color>
+    <color name="border_grey">#E2E2E2</color>
+    <color name="sign_out_grey">#8C8C8C</color>
+    <color name="disabled_grey">#C9C9C9</color>
+    <color name="track_grey">#D9D9D9</color>
+    <color name="error_red">#B00020</color>
+</resources>

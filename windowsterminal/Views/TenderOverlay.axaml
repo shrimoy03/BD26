@@ -42,7 +42,7 @@
                                 HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                 Command="{Binding TenderCircleCommand}">
                             <StackPanel Spacing="7" VerticalAlignment="Center">
-                                <TextBlock Text="Circle store card" FontSize="18" FontWeight="Medium" />
+                                <TextBlock Text="Loyallist card" FontSize="18" FontWeight="Medium" />
                                 <TextBlock Text="Loyalty account on file" FontSize="12" Foreground="{DynamicResource Dim}" />
                             </StackPanel>
                         </Button>

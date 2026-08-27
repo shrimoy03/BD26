@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Hand-written POM for the vendored palm capture engine AAR that backs
+  WinkPay palm biometrics (delivered as palmid-core-release.aar in the
+  upstream engine package). Vendor company name intentionally omitted — this
+  POM ships inside the winkpay-sdk deliverable and is integrator-visible.
+
+  The AAR carries its own native libs (arm64-v8a only: libPalmAPISaas.so,
+  libpalmid_jni.so, libc++_shared.so) and Kotlin classes; its runtime
+  dependencies (CameraX, coroutines, Guava futures) are NOT declared here
+  because winkpay-sdk already declares them all — the upstream local-AAR
+  delivery carries no dependency metadata, and inventing constraints here
+  risks version conflicts with the host app.
+
+  NOTE: groupId/artifactId (com.palmid:palmid-core) must stay exactly as the
+  winkpay-sdk POM depends on them and cannot be renamed without repackaging
+  the signed native AAR — so the "palmid" coordinate/package/.so names remain
+  and are not something this scrub can hide.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.palmid</groupId>
+  <artifactId>palmid-core</artifactId>
+  <version>2.0.0</version>
+  <packaging>aar</packaging>
+  <name>WinkPay Palm Engine</name>
+  <description>WinkPay palm capture engine (native)</description>
+</project>

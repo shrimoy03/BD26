@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:keepScreenOn="true"
+    android:background="@color/white">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingHorizontal="40dp"
+        android:paddingTop="14dp"
+        android:paddingBottom="12dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:adjustViewBounds="true"
+                android:contentDescription="@string/wordmark"
+                android:scaleType="fitStart"
+                android:src="@drawable/bloomingdales_wordmark" />
+
+            <ImageView
+                android:id="@+id/settingsButton"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/settings"
+                android:padding="5dp"
+                android:src="@drawable/ic_settings" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:fontFamily="sans-serif"
+            android:text="@string/welcome"
+            android:textColor="@color/text_dark"
+            android:textSize="28sp"
+            android:textStyle="bold" />
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="12dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_panel">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center_horizontal"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:layout_width="wrap_content"
+                    android:layout_height="44dp"
+                    android:adjustViewBounds="true"
+                    android:contentDescription="@string/bconnected_rest"
+                    android:src="@drawable/bconnected_logo" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center"
+                    android:maxWidth="560dp"
+                    android:paddingHorizontal="16dp"
+                    android:text="@string/bconnected_caption"
+                    android:textAlignment="center"
+                    android:textColor="@color/text_dark"
+                    android:textSize="14sp" />
+
+                <FrameLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="16dp">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_bar_behind_tiles"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="44dp"
+                        android:paddingBottom="14dp">
+
+                        <LinearLayout
+                            android:id="@+id/signupTile"
+                            android:layout_width="110dp"
+                            android:layout_height="110dp"
+                            android:background="@drawable/bg_tile"
+                            android:clickable="true"
+                            android:elevation="6dp"
+                            android:focusable="true"
+                            android:gravity="center"
+                            android:orientation="vertical">
+
+                            <ImageView
+                                android:layout_width="48dp"
+                                android:layout_height="48dp"
+                                android:contentDescription="@string/signup"
+                                android:src="@drawable/icon_qr" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:text="@string/signup"
+                                android:textColor="@color/text_dark"
+                                android:textSize="15sp" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:id="@+id/faceTile"
+                            android:layout_width="110dp"
+                            android:layout_height="110dp"
+                            android:layout_marginStart="36dp"
+                            android:background="@drawable/bg_tile"
+                            android:clickable="true"
+                            android:elevation="6dp"
+                            android:focusable="true"
+                            android:gravity="center"
+                            android:orientation="vertical">
+
+                            <ImageView
+                                android:layout_width="48dp"
+                                android:layout_height="48dp"
+                                android:contentDescription="@string/face"
+                                android:src="@drawable/icon_face" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:text="@string/face"
+                                android:textColor="@color/text_dark"
+                                android:textSize="15sp" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:id="@+id/palmTile"
+                            android:layout_width="110dp"
+                            android:layout_height="110dp"
+                            android:layout_marginStart="36dp"
+                            android:background="@drawable/bg_tile"
+                            android:clickable="true"
+                            android:elevation="6dp"
+                            android:focusable="true"
+                            android:gravity="center"
+                            android:orientation="vertical">
+
+                            <ImageView
+                                android:layout_width="48dp"
+                                android:layout_height="48dp"
+                                android:contentDescription="@string/palm"
+                                android:src="@drawable/icon_palm" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:text="@string/palm"
+                                android:textColor="@color/text_dark"
+                                android:textSize="15sp" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/statusText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:textColor="#B00020"
+                    android:textSize="14sp"
+                    android:visibility="invisible" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <ImageView
+            android:layout_width="wrap_content"
+            android:layout_height="22dp"
+            android:layout_gravity="end"
+            android:layout_marginTop="6dp"
+            android:adjustViewBounds="true"
+            android:contentDescription="@string/powered_by"
+            android:src="@drawable/powered_by_wink" />
+    </LinearLayout>
+</FrameLayout>

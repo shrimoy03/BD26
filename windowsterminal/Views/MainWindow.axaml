@@ -10,7 +10,7 @@
         Width="1280" Height="800"
         Background="{DynamicResource Bg}"
         FontFamily="{StaticResource Sans}"
-        Title="Meridian &amp; Co. POS">
+        Title="Bloomingdale's POS">
 
     <Design.DataContext>
         <vm:MainViewModel />

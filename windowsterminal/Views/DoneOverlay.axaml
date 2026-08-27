@@ -6,6 +6,8 @@
 
     <Panel Background="{DynamicResource Bg}">
         <StackPanel Width="560" Spacing="18" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Image Source="avares://MerchantTerminal/Assets/rewards_dog.png" Height="130"
+                   Stretch="Uniform" HorizontalAlignment="Center" />
             <Border Width="64" Height="64" CornerRadius="32" BorderBrush="{DynamicResource Pos}"
                     BorderThickness="1" HorizontalAlignment="Center">
                 <TextBlock Text="✓" FontSize="26" Foreground="{DynamicResource Pos}"

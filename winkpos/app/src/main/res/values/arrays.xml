@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="rotation_options">
+        <item>0</item><item>90</item><item>180</item><item>270</item>
+    </string-array>
+    <string-array name="preview_rotation_options">
+        <item>auto</item><item>0</item><item>90</item><item>180</item><item>270</item>
+    </string-array>
+    <string-array name="camera_options">
+        <item>0 · front</item><item>1 · back</item>
+    </string-array>
+    <string-array name="palm_rotation_options">
+        <item>follow face</item><item>0</item><item>90</item><item>180</item><item>270</item>
+    </string-array>
+    <string-array name="palm_camera_options">
+        <item>follow face</item><item>0 · front</item><item>1 · back</item>
+    </string-array>
+    <string-array name="orientation_options">
+        <item>auto</item><item>landscape</item><item>portrait</item><item>sensorLandscape</item><item>reverseLandscape</item>
+    </string-array>
+</resources>

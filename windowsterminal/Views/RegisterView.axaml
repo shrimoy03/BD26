@@ -11,10 +11,16 @@
         <Border Grid.Row="0" Background="{DynamicResource Panel}"
                 BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1">
             <DockPanel Margin="24,0">
-                <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="5">
-                    <TextBlock Classes="serif" Text="Meridian &amp; Co." FontSize="27" LetterSpacing="0.5"
-                               LineHeight="27" />
-                    <TextBlock Classes="label" Text="FIFTH AVENUE" LetterSpacing="3.2" />
+                <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="7">
+                    <Panel Height="26" HorizontalAlignment="Left">
+                        <Image Source="avares://MerchantTerminal/Assets/bloomingdales_wordmark.png"
+                               Height="26" Stretch="Uniform"
+                               IsVisible="{Binding !IsDarkTheme}" />
+                        <Image Source="avares://MerchantTerminal/Assets/bloomingdales_wordmark_white.png"
+                               Height="26" Stretch="Uniform"
+                               IsVisible="{Binding IsDarkTheme}" />
+                    </Panel>
+                    <TextBlock Classes="label" Text="59TH STREET" LetterSpacing="3.2" />
                 </StackPanel>
 
                 <Border DockPanel.Dock="Left" Width="1" Height="34" Background="{DynamicResource Line}"

@@ -1,0 +1,9 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Black bar behind the lower half of the biometric tiles -->
+    <item android:top="70dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/bloom_black"/>
+            <corners android:radius="10dp"/>
+        </shape>
+    </item>
+</layer-list>

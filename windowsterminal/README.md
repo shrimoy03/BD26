@@ -6,7 +6,8 @@ network to the Android customer-facing app (`../winkpos`) which embeds WinkPay.
 
 Built with **Avalonia UI on .NET 10** — a native desktop app that develops and
 runs on macOS and publishes to a self-contained Windows executable. The UI
-implements the "Meridian & Co. POS" design handoff (1600×1000 register canvas,
+implements the register design handoff, styled with the Bloomingdale's Figma assets
+(wordmark, Loyallist art, catalog items) (1600×1000 register canvas,
 dark + light themes, basket / quick keys / customer lookup / promotions /
 split tender / sale complete).
 

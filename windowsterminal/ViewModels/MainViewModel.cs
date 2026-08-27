@@ -28,18 +28,18 @@ public partial class MainViewModel : ViewModelBase
 
     private static readonly IReadOnlyList<Product> Catalog = new List<Product>
     {
-        new("8842-1170", "Pavé Eternity Band, 18k", "Fine Jewelry", 2450m),
-        new("3310-0455", "Cashmere Wrap Coat", "Designer Ready-to-Wear", 1290m),
-        new("7712-0098", "Calfskin Top-Handle Bag", "Handbags", 1875m),
-        new("2201-6633", "Silk Charmeuse Slip Dress", "Contemporary", 495m),
-        new("5590-0021", "Vitamin C Renewal Serum", "Beauty", 168m),
+        new("5901-0170", "Valentino Donna Born In Roma Eau de Parfum", "Beauty", 170m),
+        new("8842-0299", "Diamond Stud Earrings (1/3 ct. t.w.), 14k White Gold", "Fine Jewelry", 299m),
+        new("7712-0149", "The Sak Leather Crossbody", "Handbags", 149m),
+        new("3310-1290", "Cashmere Wrap Coat", "Designer Ready-to-Wear", 1290m),
+        new("0001-0038", "Little Brown Bag Tote", "Bloomingdale's Exclusives", 38m),
     };
 
     private static readonly IReadOnlyList<PromoDef> PromoDefs = new List<PromoDef>
     {
-        new("beauty10", "Beauty Event · 10% off cosmetics", "Auto-qualified · Beauty department, no minimum", 0.10m, null, "Beauty", "Beauty Event 10%"),
-        new("loyalty", "Platinum Circle reward redemption", "Requires linked Platinum member · $260 available", null, 260m, "*", "Circle reward"),
-        new("jewel", "Fine Jewelry private event · $250 off $2,000", "Manager approval · one per transaction", null, 250m, "Fine Jewelry", "Private event"),
+        new("loyal10", "Loyallist · 10% off select items", "Auto-qualified · with your Bloomingdale's Loyallist card", 0.10m, null, "Beauty", "Loyallist 10%"),
+        new("rewards", "Loyallist Rewards redemption", "Requires linked Loyallist member · $10.00 available", null, 10m, "*", "Rewards $10"),
+        new("jewel", "Fine Jewelry private event · $50 off $250", "Manager approval · one per transaction", null, 50m, "Fine Jewelry", "Private event"),
         new("emp", "Associate discount · 20%", "Employee 44182 · excludes fine jewelry", 0.20m, null, "none", "Associate"),
     };
 
@@ -91,9 +91,9 @@ public partial class MainViewModel : ViewModelBase
     public IReadOnlyList<Product> QuickKeys => Catalog;
     public IReadOnlyList<CustomerRecord> Customers { get; } = new List<CustomerRecord>
     {
-        new("Amara Okonkwo", "+1 917 442 0118 · amara.o@mail.com", "PLATINUM CIRCLE", "48,210 pts · $260 rewards", "AO"),
-        new("Julian Okonjo", "+1 646 220 7741 · j.okonjo@mail.com", "GOLD CIRCLE", "12,880 pts", "JO"),
-        new("Priya Okonkwo-Rai", "+1 212 908 3355 · priya.r@mail.com", "MEMBER", "1,240 pts", "PR"),
+        new("Luna Martinez", "+1 917 442 0118 · luna.m@mail.com", "LOYALLIST", "1,300 pts · $10 rewards", "LM"),
+        new("Shrimoy Satpathy", "+1 646 220 7741 · shrimoy@wink.cloud", "TOP OF THE LIST", "48,210 pts", "SS"),
+        new("Priya Rai", "+1 212 908 3355 · priya.r@mail.com", "MEMBER", "1,240 pts", "PR"),
     };
 
     private readonly List<string> _appliedPromos = new();
@@ -183,7 +183,7 @@ public partial class MainViewModel : ViewModelBase
         $"{Lines.Count} line{(Lines.Count == 1 ? "" : "s")} · {Lines.Sum(l => l.Quantity)} units";
 
     public string CustomerName => Customer?.Name ?? "No customer linked";
-    public string CustomerMeta => Customer is { } c ? $"{c.Tier} · {c.Points}" : "Search by phone, email, or Circle card";
+    public string CustomerMeta => Customer is { } c ? $"{c.Tier} · {c.Points}" : "Search by phone, email, or Loyallist card";
     public string CustomerInitials => Customer?.Initials ?? "+";
     public string CustomerAction => Customer is null ? "LOOK UP" : "VIEW";
     public string CustomerHint => Customer is null ? "Not linked" : "Linked";
@@ -202,7 +202,7 @@ public partial class MainViewModel : ViewModelBase
         : "Chip, contactless, or manual";
 
     public string DoneMessage =>
-        (Customer is { } c ? $"{c.Name} earned {Math.Round(Total)} Circle points. " : "") +
+        (Customer is { } c ? $"{c.Name} earned {Math.Round(Total)} Loyallist points. " : "") +
         $"Receipt printed and emailed. Transaction {Money.Format(Total)} settled across " +
         $"{Payments.Count} tender{(Payments.Count == 1 ? "" : "s")}.";
 
@@ -351,7 +351,7 @@ public partial class MainViewModel : ViewModelBase
         var p = row.Def;
         if (p.Id == "loyalty" && Customer is null)
         {
-            Status = "Link a Circle member to redeem rewards";
+            Status = "Link a Loyallist member to redeem rewards";
             return;
         }
         if (p.Id == "emp")
@@ -474,7 +474,7 @@ public partial class MainViewModel : ViewModelBase
 
     [RelayCommand]
     private void TenderCircle() =>
-        Pay("Circle card •••• 9902", Customer is { } c ? $"On file · {c.Name}" : "Manual entry", Balance);
+        Pay("Loyallist card •••• 1234", Customer is { } c ? $"On file · {c.Name}" : "Manual entry", Balance);
 
     [RelayCommand]
     private void TenderCash() => Pay("Cash", "Drawer 2 · tendered", Balance);

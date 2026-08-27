@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/page_grey"
+    android:keepScreenOn="true"
+    android:orientation="vertical"
+    android:paddingHorizontal="20dp"
+    android:paddingVertical="10dp">
+
+    <!-- Header -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/settings"
+            android:textColor="@color/text_dark"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/resetButton"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="wrap_content"
+            android:layout_height="38dp"
+            android:background="@drawable/bg_sign_out"
+            android:paddingHorizontal="16dp"
+            android:text="@string/reset_defaults"
+            android:textAllCaps="false"
+            android:textColor="@color/white"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/saveButton"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="wrap_content"
+            android:layout_height="38dp"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/bg_btn_black"
+            android:paddingHorizontal="22dp"
+            android:text="@string/save"
+            android:textAllCaps="false"
+            android:textColor="@color/white"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/closeButton"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="wrap_content"
+            android:layout_height="38dp"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/bg_sign_out"
+            android:paddingHorizontal="16dp"
+            android:text="@string/close"
+            android:textAllCaps="false"
+            android:textColor="@color/white"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:baselineAligned="false"
+            android:orientation="horizontal">
+
+            <!-- Face column -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@drawable/bg_tile"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/SettingsSection" android:text="@string/section_face" />
+
+                <TextView style="@style/SettingsLabel" android:text="rotationAngle" />
+                <Spinner android:id="@+id/faceRotation" style="@style/SettingsEdit" />
+
+                <TextView style="@style/SettingsLabel" android:text="cameraIndex" />
+                <Spinner android:id="@+id/faceCamera" style="@style/SettingsEdit" />
+
+                <TextView style="@style/SettingsLabel" android:text="previewRotation" />
+                <Spinner android:id="@+id/facePreviewRotation" style="@style/SettingsEdit" />
+
+                <TextView style="@style/SettingsLabel" android:text="activityOrientation" />
+                <Spinner android:id="@+id/activityOrientation" style="@style/SettingsEdit" />
+
+                <TextView style="@style/SettingsLabel" android:text="minFaceRatio (0–1, empty = auto)" />
+                <EditText android:id="@+id/minFaceRatio" style="@style/SettingsEdit"
+                    android:hint="@string/hint_auto"
+                    android:importantForAutofill="no"
+                    android:inputType="numberDecimal" />
+
+                <TextView style="@style/SettingsLabel" android:text="maxFaceRatio (0–1, empty = auto)" />
+                <EditText android:id="@+id/maxFaceRatio" style="@style/SettingsEdit"
+                    android:hint="@string/hint_auto"
+                    android:importantForAutofill="no"
+                    android:inputType="numberDecimal" />
+
+                <TextView style="@style/SettingsLabel" android:text="faceRatio (0–1, empty = auto)" />
+                <EditText android:id="@+id/faceRatio" style="@style/SettingsEdit"
+                    android:hint="@string/hint_auto"
+                    android:importantForAutofill="no"
+                    android:inputType="numberDecimal" />
+
+                <TextView style="@style/SettingsLabel" android:text="maxRetries" />
+                <EditText android:id="@+id/maxRetries" style="@style/SettingsEdit"
+                    android:importantForAutofill="no"
+                    android:inputType="number" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/livenessEnabled" style="@style/SettingsSwitch"
+                    android:text="livenessEnabled" />
+            </LinearLayout>
+
+            <!-- Palm column -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_tile"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/SettingsSection" android:text="@string/section_palm" />
+
+                <TextView style="@style/SettingsLabel" android:text="palmRotationAngle" />
+                <Spinner android:id="@+id/palmRotation" style="@style/SettingsEdit" />
+
+                <TextView style="@style/SettingsLabel" android:text="palmCameraIndex" />
+                <Spinner android:id="@+id/palmCamera" style="@style/SettingsEdit" />
+
+                <TextView style="@style/SettingsLabel" android:text="palmPreviewRotation" />
+                <Spinner android:id="@+id/palmPreviewRotation" style="@style/SettingsEdit" />
+
+                <TextView style="@style/SettingsLabel"
+                    android:text="palmFocusMaskOpacity (0–1, empty = adaptive)" />
+                <EditText android:id="@+id/palmFocusMaskOpacity" style="@style/SettingsEdit"
+                    android:hint="@string/hint_adaptive"
+                    android:importantForAutofill="no"
+                    android:inputType="numberDecimal" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/palmTrackingOverlay" style="@style/SettingsSwitch"
+                    android:text="palmTrackingOverlay" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/palmLivenessEnabled" style="@style/SettingsSwitch"
+                    android:text="palmLivenessEnabled" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/enableIR" style="@style/SettingsSwitch"
+                    android:text="enableIR (RGB+IR hardware only)" />
+            </LinearLayout>
+
+            <!-- SDK column -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_tile"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView style="@style/SettingsSection" android:text="@string/section_sdk" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/palmMfaEnabled" style="@style/SettingsSwitch"
+                    android:text="palmMfaEnabled" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/debugLogging" style="@style/SettingsSwitch"
+                    android:text="debugLogging" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/settings_note"
+                    android:textColor="@color/text_grey"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:id="@+id/envText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:textColor="@color/text_dark"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>
