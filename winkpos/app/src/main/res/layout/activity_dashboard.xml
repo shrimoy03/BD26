@@ -119,11 +119,12 @@
                     </LinearLayout>
 
                     <TextView
+                        android:id="@+id/pointsText"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:text="@string/points"
-                        android:textColor="@color/text_dark"
+                        android:text="@string/points_loading"
+                        android:textColor="@color/text_grey"
                         android:textSize="20sp"
                         android:textStyle="bold" />
 
@@ -147,12 +148,13 @@
                         android:textSize="10sp" />
 
                     <ProgressBar
+                        android:id="@+id/pointsProgress"
                         style="@android:style/Widget.ProgressBar.Horizontal"
                         android:layout_width="match_parent"
                         android:layout_height="6dp"
                         android:layout_marginTop="5dp"
                         android:max="100"
-                        android:progress="33"
+                        android:progress="0"
                         android:progressDrawable="@drawable/progress_loyalty" />
                 </LinearLayout>
 

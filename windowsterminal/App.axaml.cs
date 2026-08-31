@@ -9,7 +9,7 @@ namespace MerchantTerminal;
 
 public partial class App : Application
 {
-    private TerminalLink? _terminalLink;
+    private ITerminalLink? _terminalLink;
 
     public override void Initialize()
     {
@@ -20,7 +20,17 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            _terminalLink = new TerminalLink();
+            // POS_TERMINAL_LINK selects the customer-terminal transport:
+            //   jpxss -> PAX-agreed REST flow (JPxSerialServer over USB, or
+            //            PXRRS on the terminal directly over Ethernet/Wi-Fi)
+            //   pcl   -> JPxSerialServer's raw PCL TCP socket
+            //   else  -> the Wi-Fi WebSocket server (default)
+            _terminalLink = System.Environment.GetEnvironmentVariable("POS_TERMINAL_LINK") switch
+            {
+                "jpxss" => new CompositeLink(new JpxRestLink(), new TerminalLink()),
+                "pcl" => new PclSocketLink(),
+                _ => (ITerminalLink)new TerminalLink(),
+            };
             _ = _terminalLink.StartAsync().ContinueWith(
                 t => System.Console.WriteLine($"[TerminalLink] failed to start: {t.Exception?.GetBaseException().Message}"),
                 System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);

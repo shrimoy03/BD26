@@ -31,6 +31,14 @@ object CheckinSession {
     var cards: List<Card> = emptyList()
         private set
 
+    /**
+     * The customer's Okta/Auth0 user id, used to read loyalty points from
+     * user_metadata. Wink calls it "qcToken" on the user record; fall back to
+     * externalUserId / the first externalIAM id when absent.
+     */
+    var oktaUserId: String? = null
+        private set
+
     // Never falls back to an expired card — better "no card on file" than a
     // guaranteed decline.
     val preferredCard: Card?
@@ -45,10 +53,23 @@ object CheckinSession {
 
         val root = JSONObject(loginResponseJson)
         val details = root.optJSONObject("userPaymentDetails")
-        firstName = details?.optJSONObject("user")
-            ?.optString("firstName")
+        val user = details?.optJSONObject("user")
+        firstName = user?.optString("firstName")
             ?.takeIf { it.isNotBlank() && it != "null" }
             ?: "there"
+
+        fun JSONObject.stringOrNull(key: String): String? =
+            optString(key).takeIf { it.isNotBlank() && it != "null" }
+
+        // The Auth0 id arrives in user.externalIAM[]: prefer the "auth0|…"
+        // entry (entityType 1); externalUserId is typically JSON null.
+        val iamIds = user?.optJSONArray("externalIAM")?.let { arr ->
+            (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.stringOrNull("externalId") }
+        }.orEmpty()
+        oktaUserId = user?.stringOrNull("qcToken")
+            ?: iamIds.firstOrNull { it.startsWith("auth0|") }
+            ?: user?.stringOrNull("externalUserId")
+            ?: iamIds.firstOrNull()
 
         val parsed = mutableListOf<Card>()
         val cardsArr = details?.optJSONArray("cards")
@@ -75,5 +96,6 @@ object CheckinSession {
         winkTag = null
         accessToken = null
         cards = emptyList()
+        oktaUserId = null
     }
 }

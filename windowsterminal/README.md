@@ -68,6 +68,63 @@ node --experimental-websocket tools/fake-terminal.mjs
 
 Connects to the register and auto-approves any `START_PAYMENT` after 1.5 s.
 
+## PAX-agreed link: JPXSS/PXRRS REST flow (jpxss mode)
+
+The flow from PAX's BloomingdaleDemo sequence diagram: the register drives
+PxRetailer form variables as mailboxes (`Services/JpxRestLink.cs`):
+subscribe + `FOREGROUND=false` on startup; a sale is
+`sendBatchCmd [SetVariable START_TRANS_REQ_DATA, DisplayForm StartTransaction]`;
+the result comes back via a `notify IS_TRANS_STARTED=2` callback followed by
+`getVariable TRANS_RESULT`. Works identically against JPxSerialServer on this
+PC (USB-tethered terminal, PAX RS232-USB driver required) or against PXRRS on
+the terminal's own IP over Ethernet/Wi-Fi (no JPXSS at all).
+
+```bash
+POS_TERMINAL_LINK=jpxss dotnet run
+# POS_JPXSS_URL   REST base            (default http://127.0.0.1:9090)
+# POS_NOTIFY_URL  our notify callback  (default http://127.0.0.1:8282/notify —
+#                 use this PC's LAN IP when talking to the terminal directly)
+```
+
+Terminal-side counterpart: `../winkpos` `link/PxrrsTransport.kt`
+(`POS_LINK_MODE=pxrrs` in local.properties). Simulate the whole flow without
+hardware (fake JPXSS/PXRRS + auto-approving WinkPay):
+
+```bash
+node tools/fake-jpxss.mjs
+POS_TERMINAL_LINK=jpxss POS_TERMINAL_TEST_DIR=/tmp/jpxsstest dotnet run
+```
+
+Form/variable names come from the sequence diagram and are marked
+`TODO(PAX)` pending the form package they ship.
+
+## USB link via JPxSerialServer (PCL mode)
+
+For a USB-tethered PAX terminal the register can talk through PAX's
+JPxSerialServer instead of hosting the WebSocket. Same JSON protocol, framed
+as PCL (`Services/PclFrameCodec.cs`): `STX | u16be len | TLVs | ETX | CRC32be`
+over JPxSerialServer's raw TCP socket.
+
+```bash
+POS_TERMINAL_LINK=pcl dotnet run       # connect to 127.0.0.1:7001
+# POS_PCL_HOST / POS_PCL_PORT override the JPxSerialServer address
+```
+
+Setup on the Windows box: install JPxSerialServer (needs Java 8), and in its
+`application.properties` set `serverSocket.enabled=true` (port 7001). The
+terminal-side counterpart lives in `../winkpos` (`link/PclSerialTransport.kt`),
+pending PAX's NeptuneLite serial library — see `link/SerialIo.kt`. Open items
+for PAX are marked `TODO(PAX)` in both codecs (ACK/NAK semantics, payload TLV
+tag).
+
+Simulate the whole USB path without hardware (fake JPxSerialServer+terminal,
+auto-approves):
+
+```bash
+node tools/fake-pcl-terminal.mjs
+POS_TERMINAL_LINK=pcl POS_TERMINAL_TEST_DIR=/tmp/pcltest dotnet run
+```
+
 ## Headless screenshot / test modes
 
 Environment variables (used for visual review without screen-recording

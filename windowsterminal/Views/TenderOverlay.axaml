@@ -72,10 +72,10 @@
                         </Button>
                         <Button Grid.Row="4" Grid.Column="2" Classes="pos tile" Padding="22,0"
                                 HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                Command="{Binding TenderLinkCommand}">
+                                Command="{Binding TenderLoyallistCommand}">
                             <StackPanel Spacing="7" VerticalAlignment="Center">
-                                <TextBlock Text="Pay by link" FontSize="18" FontWeight="Medium" />
-                                <TextBlock Text="SMS to customer mobile" FontSize="12" Foreground="{DynamicResource Dim}" />
+                                <TextBlock Text="BD Loyallist Pay" FontSize="18" FontWeight="Medium" />
+                                <TextBlock Text="Face, palm, or card · chosen on terminal" FontSize="12" Foreground="{DynamicResource Dim}" />
                             </StackPanel>
                         </Button>
                     </Grid>

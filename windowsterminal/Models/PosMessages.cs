@@ -20,13 +20,27 @@ public sealed record PosMessage
     public string? Status { get; init; }   // APPROVED | DECLINED | CANCELLED
     public string? Method { get; init; }   // e.g. WINK | CARD
     public string? Reason { get; init; }
+    public string? Token { get; init; }    // card token for the gateway simulator
+
+    // DISPLAY_CART — basket mirrored onto the customer terminal
+    public CartLine[]? Items { get; init; }
+    public long? SubtotalCents { get; init; }
+    public long? TaxCents { get; init; }
 }
+
+/// <summary>One basket line inside a DISPLAY_CART message.</summary>
+public sealed record CartLine(string Name, int Qty, long AmountCents);
 
 public static class PosMessageTypes
 {
     // Terminal -> Android
     public const string StartPayment = "START_PAYMENT";
     public const string CancelPayment = "CANCEL_PAYMENT";
+    public const string DisplayCart = "DISPLAY_CART";
+    public const string ShowThanks = "SHOW_THANKS";
+
+    // PxRetailer form -> Terminal (PAYMENTSTATUS FireEvent, via PXRRS notify)
+    public const string TenderSelected = "TENDER_SELECTED";
 
     // Android -> Terminal
     public const string Hello = "HELLO";

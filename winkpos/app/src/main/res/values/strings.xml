@@ -22,7 +22,8 @@
     <string name="hello_name">Hello, %1$s</string>
     <string name="sign_out">Sign Out</string>
     <string name="loyallist">LOYALLIST</string>
-    <string name="points">1,300 Points</string>
+    <string name="points_loading">Loading…</string>
+    <string name="points_dynamic">%1$s Points</string>
     <string name="points_caption">Points from your purchases\nadd up to Rewards</string>
     <string name="points_upgrade">Spend $2,700.00 more at Bloomingdale\'s this year to get upgraded!</string>
     <string name="rewards">REWARDS</string>
@@ -54,6 +55,14 @@
     <string name="reward_needs_items">Scan items before redeeming the Reward.</string>
     <string name="offer_applied">Offer will be applied at the register.</string>
     <string name="all_items_scanned">All demo items are already in the cart.</string>
+
+    <!-- Register-driven sales (merchant POS link) -->
+    <string name="register_sale_prompt">Register sale — %1$s\nCheck in with Face or Palm to pay</string>
+    <string name="register_sale_started">Register sale started — %1$s</string>
+    <string name="register_sale_cancelled">The register cancelled the payment.</string>
+    <string name="register_owns_sale">This sale is driven by the register.</string>
+    <string name="register_sale_item">Bloomingdale\'s register sale</string>
+    <string name="register_sale_order">Order %1$s</string>
 
     <string name="settings">Capture settings</string>
     <string name="section_face">Face</string>

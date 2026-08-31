@@ -14,6 +14,8 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
+import com.bloomingdales.winkpos.link.PosLink
+import com.bloomingdales.winkpos.link.PosMessage
 import java.util.Locale
 import java.util.concurrent.Executors
 
@@ -21,8 +23,14 @@ import java.util.concurrent.Executors
  * Post-check-in customer dashboard: greeting, Loyallist loyalty summary,
  * offers, and the order panel. Pay charges the customer's preferred saved
  * card by calling the Wink payments API directly (see WinkPaymentsClient).
+ *
+ * Two sale modes:
+ *  - Standalone demo: the cart icon "scans" demo items and totals are local.
+ *  - Register-driven: the merchant POS sent START_PAYMENT (PosLink.RegisterSale
+ *    is pending) — the order panel shows the register's amount, Pay charges
+ *    exactly that, and the outcome is reported back as PAYMENT_RESULT.
  */
-class DashboardActivity : AppCompatActivity() {
+class DashboardActivity : AppCompatActivity(), PosLink.Listener {
 
     data class DemoItem(val name: String, val detail: String, val priceCents: Int)
 
@@ -51,11 +59,23 @@ class DashboardActivity : AppCompatActivity() {
     private lateinit var cartBadge: TextView
     private lateinit var payButton: Button
     private lateinit var orderTitle: TextView
+    private lateinit var pointsText: TextView
+
+    /** Live Okta loyalty balance; null until fetched (or when unconfigured). */
+    private var oktaPoints: Int? = null
+
+    /** Register-driven sale mode: the merchant POS owns the amount. */
+    private val registerMode: Boolean get() = PosLink.RegisterSale.isPending
 
     private val subtotalCents: Int get() = cart.sumOf { it.priceCents }
     private val rewardCents: Int get() = if (rewardApplied && subtotalCents > 0) 1_000 else 0
     private val taxCents: Int get() = Math.round((subtotalCents - rewardCents) * TAX_RATE).toInt()
-    private val totalCents: Int get() = subtotalCents - rewardCents + taxCents
+    private val totalCents: Int
+        get() = if (registerMode) {
+            PosLink.RegisterSale.amountCents.toInt() // register total is final (tax included)
+        } else {
+            subtotalCents - rewardCents + taxCents
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,8 +94,10 @@ class DashboardActivity : AppCompatActivity() {
 
         findViewById<TextView>(R.id.greetingText).text =
             getString(R.string.hello_name, CheckinSession.firstName.ifEmpty { "there" })
+        pointsText = findViewById(R.id.pointsText)
 
         bindPreferredCard()
+        fetchLoyaltyPoints()
 
         // Demo "scanner": tapping the cart rings up the next demo item.
         findViewById<ImageView>(R.id.cartIcon).setOnClickListener { scanNextItem() }
@@ -83,7 +105,9 @@ class DashboardActivity : AppCompatActivity() {
         findViewById<View>(R.id.signOutButton).setOnClickListener { signOut() }
 
         findViewById<Button>(R.id.rewardsRedeemButton).setOnClickListener {
-            if (subtotalCents == 0) {
+            if (registerMode) {
+                toast(getString(R.string.register_owns_sale))
+            } else if (subtotalCents == 0) {
                 toast(getString(R.string.reward_needs_items))
             } else if (!rewardApplied) {
                 rewardApplied = true
@@ -113,13 +137,99 @@ class DashboardActivity : AppCompatActivity() {
         renderTotals()
     }
 
+    /**
+     * Loyalty points from the customer's Okta profile (user_metadata.points),
+     * same source the NRF demo read. Shows "Loading…" until the balance
+     * arrives; resolves to 0 when unconfigured, the user id is missing, or
+     * the fetch fails.
+     */
+    private fun fetchLoyaltyPoints() {
+        val userId = CheckinSession.oktaUserId
+        if (!OktaRewardsClient.isConfigured || userId == null) {
+            showPoints(0)
+            return
+        }
+        executor.execute {
+            val points = try {
+                OktaRewardsClient.fetchPoints(userId)
+            } catch (e: Exception) {
+                android.util.Log.w("Dashboard", "Okta points fetch failed", e)
+                0
+            }
+            mainHandler.post {
+                if (isFinishing || isDestroyed) return@post
+                oktaPoints = points
+                showPoints(points)
+            }
+        }
+    }
+
+    private fun showPoints(points: Int) {
+        pointsText.text = getString(
+            R.string.points_dynamic,
+            String.format(Locale.US, "%,d", points),
+        )
+        pointsText.setTextColor(
+            androidx.core.content.ContextCompat.getColor(this, R.color.text_dark),
+        )
+        // Progress toward the next 1,000-point reward (1,000 pts = $10).
+        findViewById<android.widget.ProgressBar>(R.id.pointsProgress)
+            .progress = (points % 1_000) / 10
+    }
+
+    /** Award purchase points to the Okta profile — fire and forget. */
+    private fun awardLoyaltyPoints() {
+        val userId = CheckinSession.oktaUserId
+        val current = oktaPoints
+        if (!OktaRewardsClient.isConfigured || userId == null || current == null) return
+        executor.execute {
+            try {
+                OktaRewardsClient.setPoints(
+                    userId, current + OktaRewardsClient.POINTS_PER_PURCHASE,
+                )
+            } catch (e: Exception) {
+                android.util.Log.w("Dashboard", "Okta points award failed", e)
+            }
+        }
+    }
+
     private fun bindPreferredCard() {
         val card = CheckinSession.preferredCard
         findViewById<TextView>(R.id.cardLast4).text =
             card?.let { "#${it.last4}" } ?: getString(R.string.no_card_on_file)
     }
 
+    override fun onResume() {
+        super.onResume()
+        PosLink.addListener(this)
+        renderItems()
+        renderTotals()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        PosLink.removeListener(this)
+    }
+
+    // ----- Register link (merchant POS via Wi-Fi or USB/JPxSerialServer) -----
+
+    override fun onStartPayment(orderId: String, amountCents: Long) {
+        toast(getString(R.string.register_sale_started, money(amountCents.toInt())))
+        renderItems()
+        renderTotals()
+    }
+
+    override fun onCancelPayment(orderId: String?) {
+        toast(getString(R.string.register_sale_cancelled))
+        renderItems()
+        renderTotals()
+    }
+
     private fun scanNextItem() {
+        if (registerMode) {
+            toast(getString(R.string.register_owns_sale))
+            return
+        }
         if (cart.size >= demoItems.size) {
             toast(getString(R.string.all_items_scanned))
             return
@@ -133,6 +243,19 @@ class DashboardActivity : AppCompatActivity() {
     private fun renderItems() {
         itemsContainer.removeAllViews()
         val inflater = LayoutInflater.from(this)
+        if (registerMode) {
+            val row = inflater.inflate(R.layout.row_order_item, itemsContainer, false)
+            row.findViewById<TextView>(R.id.itemName).text =
+                getString(R.string.register_sale_item)
+            row.findViewById<TextView>(R.id.itemDetail).text =
+                getString(R.string.register_sale_order, PosLink.RegisterSale.orderId ?: "")
+            row.findViewById<TextView>(R.id.itemPrice).text = money(totalCents)
+            itemsContainer.addView(row)
+            emptyCartHint.visibility = View.GONE
+            orderTitle.text = getString(R.string.order_summary)
+            cartBadge.visibility = View.GONE
+            return
+        }
         for (item in cart) {
             val row = inflater.inflate(R.layout.row_order_item, itemsContainer, false)
             row.findViewById<TextView>(R.id.itemName).text = item.name
@@ -149,10 +272,10 @@ class DashboardActivity : AppCompatActivity() {
     }
 
     private fun renderTotals() {
-        subtotalValue.text = money(subtotalCents)
-        taxesValue.text = money(taxCents)
+        subtotalValue.text = money(if (registerMode) totalCents else subtotalCents)
+        taxesValue.text = money(if (registerMode) 0 else taxCents)
         totalValue.text = money(totalCents)
-        rewardRow.visibility = if (rewardCents > 0) View.VISIBLE else View.GONE
+        rewardRow.visibility = if (!registerMode && rewardCents > 0) View.VISIBLE else View.GONE
 
         val canPay = totalCents > 0 && CheckinSession.preferredCard != null && !paying
         payButton.isEnabled = canPay
@@ -169,8 +292,14 @@ class DashboardActivity : AppCompatActivity() {
         renderTotals()
 
         val amount = totalCents
-        val orderId = currentOrderId
-            ?: "BLM-${System.currentTimeMillis()}".also { currentOrderId = it }
+        val fromRegister = registerMode
+        // Register sales reuse the register's order id so both systems (and
+        // the gateway's retry dedupe) refer to the same order.
+        val orderId = if (fromRegister) {
+            PosLink.RegisterSale.orderId ?: return
+        } else {
+            currentOrderId ?: "BLM-${System.currentTimeMillis()}".also { currentOrderId = it }
+        }
 
         executor.execute {
             try {
@@ -183,8 +312,16 @@ class DashboardActivity : AppCompatActivity() {
                     orderId = orderId,
                     description = "Bloomingdale's in-store purchase",
                 )
+                awardLoyaltyPoints()
                 mainHandler.post {
                     if (isFinishing || isDestroyed) return@post
+                    if (fromRegister) {
+                        PosLink.sendResult(
+                            PosMessage.STATUS_APPROVED,
+                            method = "Wink",
+                            token = card.winkCardToken,
+                        )
+                    }
                     startActivity(
                         ThankYouActivity.intent(this, result.transactionId, result.amountCents),
                     )
@@ -193,8 +330,15 @@ class DashboardActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 mainHandler.post {
                     if (isFinishing || isDestroyed) return@post
+                    if (fromRegister) {
+                        PosLink.sendResult(
+                            PosMessage.STATUS_DECLINED,
+                            reason = e.message ?: getString(R.string.payment_failed),
+                        )
+                    }
                     paying = false
                     payButton.text = getString(R.string.pay)
+                    renderItems()
                     renderTotals()
                     toast(e.message ?: getString(R.string.payment_failed))
                 }
@@ -208,6 +352,8 @@ class DashboardActivity : AppCompatActivity() {
     }
 
     private fun signOut() {
+        // Don't leave the register hanging on an awaiting-terminal banner.
+        if (registerMode) PosLink.sendResult(PosMessage.STATUS_CANCELLED)
         CheckinSession.clear()
         finish()
     }

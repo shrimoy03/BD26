@@ -11,6 +11,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- PXRRS mutual-TLS client certificate (see certs/README.md) -->
+    <None Include="certs\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Kestrel + WebSockets for the link to the Android customer terminal -->
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>

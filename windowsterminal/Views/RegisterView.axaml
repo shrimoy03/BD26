@@ -277,7 +277,7 @@
 
                     <!-- Function pad -->
                     <Grid Grid.Row="2" Margin="20,18"
-                          ColumnDefinitions="*,10,*" RowDefinitions="64,10,64,10,64,10,64"
+                          ColumnDefinitions="*,10,*" RowDefinitions="64,10,64,10,64,10,64,10,64"
                           VerticalAlignment="Top">
                         <Button Grid.Row="0" Grid.Column="0" Classes="pos key" Padding="14,0"
                                 HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
@@ -351,6 +351,17 @@
                                            Foreground="{DynamicResource Dim}" />
                                 <TextBlock Text="Recall at any till" FontSize="10.5" LetterSpacing="0.6"
                                            Foreground="{DynamicResource Dim}" />
+                            </StackPanel>
+                        </Button>
+                        <Button Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="3" Classes="pos key"
+                                Padding="14,0" HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Left"
+                                IsEnabled="{Binding IsTerminalConnected}"
+                                Command="{Binding SendToTerminalCommand}">
+                            <StackPanel Spacing="4" VerticalAlignment="Center">
+                                <TextBlock Text="Send to terminal" FontSize="14" FontWeight="Medium" />
+                                <TextBlock Text="Mirror basket on customer display" FontSize="10.5"
+                                           LetterSpacing="0.6" Foreground="{DynamicResource Dim}" />
                             </StackPanel>
                         </Button>
                     </Grid>

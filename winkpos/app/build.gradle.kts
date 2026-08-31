@@ -34,6 +34,19 @@ android {
             "\"${prop("WINK_MERCHANT_CLIENT_SECRET")}\"",
         )
         buildConfigField("String", "WINK_ENV", "\"${prop("WINK_ENV").ifEmpty { "stage" }}\"")
+
+        // Register link: "" (standalone demo), "pxrrs" (PAX flow: REST to the
+        // on-terminal PxRetailer service), "ws" (Wi-Fi, needs POS_LINK_WS_URL,
+        // e.g. ws://192.168.1.50:8181/pos), or "pcl" (USB via JPxSerialServer).
+        buildConfigField("String", "POS_LINK_MODE", "\"${prop("POS_LINK_MODE")}\"")
+        buildConfigField("String", "POS_LINK_WS_URL", "\"${prop("POS_LINK_WS_URL")}\"")
+        buildConfigField("String", "POS_LINK_PXRRS_URL", "\"${prop("POS_LINK_PXRRS_URL")}\"")
+
+        // Okta/Auth0 rewards (user_metadata.points) — optional; the dashboard
+        // falls back to the static demo points when unset.
+        buildConfigField("String", "OKTA_DOMAIN", "\"${prop("OKTA_DOMAIN")}\"")
+        buildConfigField("String", "OKTA_MTM_CLIENT_ID", "\"${prop("OKTA_MTM_CLIENT_ID")}\"")
+        buildConfigField("String", "OKTA_CLIENT_SECRET", "\"${prop("OKTA_CLIENT_SECRET")}\"")
     }
 
     packaging {
@@ -67,7 +80,7 @@ android {
 }
 
 dependencies {
-    implementation("com.wink:winkpay-sdk:1.7.9")
+    implementation("com.wink:winkpay-sdk:1.7.10")
 
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-ktx:1.9.0")

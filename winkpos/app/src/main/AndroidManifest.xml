@@ -5,7 +5,10 @@
     <!-- CAMERA/INTERNET are contributed by the SDK manifest; CAMERA still has
          to be requested at runtime by this app before launching check-in. -->
 
+    <!-- Demo: plain ws:// to the register (localhost via adb reverse, or LAN). -->
     <application
+        android:name=".WinkPosApp"
+        android:usesCleartextTraffic="true"
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher_bloomies"
         android:label="@string/app_name"
@@ -16,6 +19,7 @@
         <activity
             android:name=".WelcomeActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:screenOrientation="landscape"
             tools:ignore="LockedOrientationActivity">
             <intent-filter>

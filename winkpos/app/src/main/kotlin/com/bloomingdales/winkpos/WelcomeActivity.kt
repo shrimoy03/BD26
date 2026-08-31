@@ -9,6 +9,7 @@ import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.bloomingdales.winkpos.link.PosLink
 import com.wink.winkpay.WinkPaySdk
 import com.wink.winkpay.embedded.EmbeddedCheckinRequest
 import com.wink.winkpay.embedded.EmbeddedCheckinResult
@@ -23,11 +24,12 @@ import java.util.UUID
  * Face and Palm launch the WinkPay SDK in check-in mode; on success the
  * identified customer lands in DashboardActivity.
  */
-class WelcomeActivity : AppCompatActivity() {
+class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
 
     private lateinit var winkPay: WinkPayEmbedded
     private lateinit var statusText: TextView
     private var checkinInFlight = false
+    private var showingRegisterPrompt = false
 
     private val cameraPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -81,6 +83,101 @@ class WelcomeActivity : AppCompatActivity() {
         }
 
         ensureCameraPermission()
+        handleAutoBiometric(intent)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleAutoBiometric(intent)
+    }
+
+    /**
+     * PxRetailer form handoff: the customer tapped Face/Palm on the PAX form
+     * (PAYMENTSTATUS FireEvent -> register -> START_PAYMENT method=FACE|PALM),
+     * PosLink foregrounded us with the biometric in the intent — go straight
+     * into the WinkPay payment for the register's amount, no welcome buttons.
+     */
+    private fun handleAutoBiometric(intent: android.content.Intent?) {
+        val biometric = intent?.getStringExtra(PosLink.EXTRA_AUTO_BIOMETRIC) ?: return
+        intent.removeExtra(PosLink.EXTRA_AUTO_BIOMETRIC)
+        if (!PosLink.RegisterSale.isPending) return
+        startRegisterPayment(biometric)
+    }
+
+    private fun startRegisterPayment(biometricType: String) {
+        if (checkinInFlight) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            ensureCameraPermission()
+            return
+        }
+        val orderId = PosLink.RegisterSale.orderId ?: return
+        val amount = PosLink.RegisterSale.amountCents
+        if (amount <= 0) return
+        checkinInFlight = true
+        statusText.visibility = View.INVISIBLE
+
+        val tuning = Tuning.load(this)
+        val request = com.wink.winkpay.embedded.EmbeddedPaymentRequest(
+            requestId = UUID.randomUUID().toString(),
+            requestType = if (biometricType == "palm") "PAY_PALM" else "PAY_FACE",
+            amount = amount,
+            currency = "USD",
+            orderId = orderId,
+            tenderId = "BD-LOYALLIST",
+            returnOnFailure = true,
+            rotationAngle = tuning.faceRotation,
+            cameraIndex = tuning.faceCamera,
+            previewRotation = tuning.facePreviewRotation,
+            minFaceRatio = tuning.minFaceRatio,
+            maxFaceRatio = tuning.maxFaceRatio,
+            faceRatio = tuning.faceRatio,
+            livenessEnabled = tuning.livenessEnabled,
+            maxRetries = tuning.maxRetries,
+            activityOrientation = Tuning.orientationConstant(tuning.activityOrientation),
+            palmRotationAngle = tuning.palmRotation,
+            palmCameraIndex = tuning.palmCamera,
+            palmPreviewRotation = tuning.palmPreviewRotation,
+        )
+
+        winkPay.startPayment(request, object : EmbeddedPaymentCallback {
+            override fun onSuccess(result: EmbeddedPaymentResult) {
+                checkinInFlight = false
+                PosLink.sendResult(
+                    status = com.bloomingdales.winkpos.link.PosMessage.STATUS_APPROVED,
+                    method = "WINK ${biometricType.uppercase()}",
+                    token = result.winkToken ?: result.winkCardToken,
+                )
+                startActivity(
+                    ThankYouActivity.intent(
+                        this@WelcomeActivity, result.transactionId ?: "", result.amount.toInt(),
+                    ),
+                )
+            }
+
+            override fun onCancelled(requestId: String) {
+                checkinInFlight = false
+                PosLink.sendResult(status = com.bloomingdales.winkpos.link.PosMessage.STATUS_CANCELLED)
+            }
+
+            override fun onFailure(error: EmbeddedPaymentError) {
+                checkinInFlight = false
+                PosLink.sendResult(
+                    status = com.bloomingdales.winkpos.link.PosMessage.STATUS_DECLINED,
+                    reason = error.errorMessage.ifBlank { error.errorCode },
+                )
+                statusText.text = getString(
+                    R.string.checkin_failed,
+                    error.errorMessage.ifBlank { error.errorCode },
+                )
+                statusText.visibility = View.VISIBLE
+            }
+        })
+
+        if (checkinInFlight) {
+            startActivity(winkPay.createNativeIntent(this))
+        }
     }
 
     override fun onResume() {
@@ -89,6 +186,38 @@ class WelcomeActivity : AppCompatActivity() {
         // Activity briefly resumes between the SDK finishing and the
         // Dashboard starting, and must not wipe the just-populated session.
         checkinInFlight = false
+        PosLink.addListener(this)
+        renderRegisterSale()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        PosLink.removeListener(this)
+    }
+
+    // ----- Register link (merchant POS via Wi-Fi or USB/JPxSerialServer) -----
+
+    override fun onStartPayment(orderId: String, amountCents: Long) = renderRegisterSale()
+
+    override fun onCancelPayment(orderId: String?) {
+        if (checkinInFlight) winkPay.cancelPayment()
+        renderRegisterSale()
+    }
+
+    /** The idle screen doubles as the "pay $X" prompt for register-driven sales. */
+    private fun renderRegisterSale() {
+        val sale = PosLink.RegisterSale
+        if (sale.isPending) {
+            showingRegisterPrompt = true
+            statusText.text = getString(
+                R.string.register_sale_prompt,
+                String.format(java.util.Locale.US, "$%,.2f", sale.amountCents / 100.0),
+            )
+            statusText.visibility = View.VISIBLE
+        } else if (showingRegisterPrompt) {
+            showingRegisterPrompt = false
+            statusText.visibility = View.INVISIBLE
+        }
     }
 
     private fun ensureCameraPermission() {

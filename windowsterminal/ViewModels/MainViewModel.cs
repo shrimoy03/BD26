@@ -43,15 +43,16 @@ public partial class MainViewModel : ViewModelBase
         new("emp", "Associate discount · 20%", "Employee 44182 · excludes fine jewelry", 0.20m, null, "none", "Associate"),
     };
 
-    private readonly TerminalLink? _link;
+    private readonly ITerminalLink? _link;
     private readonly DispatcherTimer _clock;
+    private readonly DispatcherTimer _cartSyncTimer;
     private int _uid = 1;
     private int _txnBase = 40880;
     private string? _terminalOrderId;
 
     public MainViewModel() : this(null) { }
 
-    public MainViewModel(TerminalLink? link)
+    public MainViewModel(ITerminalLink? link)
     {
         _link = link;
         if (_link is not null)
@@ -60,6 +61,8 @@ public partial class MainViewModel : ViewModelBase
             {
                 IsTerminalConnected = true;
                 Status = "Customer terminal connected";
+                _lastCartJson = null;
+                QueueCartSync(); // mirror the current basket on connect
             });
             _link.ClientDisconnected += () => OnUiThread(() =>
             {
@@ -78,6 +81,9 @@ public partial class MainViewModel : ViewModelBase
         Status = "Item 5590-0021 added · qty 2";
         SelectLineInternal(Lines[0]);
         Refresh();
+
+        _cartSyncTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        _cartSyncTimer.Tick += (_, _) => FlushCartSync();
 
         _clock = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _clock.Tick += (_, _) => ClockText = FormatClock(DateTime.Now);
@@ -395,6 +401,67 @@ public partial class MainViewModel : ViewModelBase
 
     // ----- Tenders -----
 
+    private PosMessage BuildCartMessage() => new()
+    {
+        Type = PosMessageTypes.DisplayCart,
+        OrderId = TxnId,
+        Currency = "USD",
+        Items = Lines.Select(l => new CartLine(l.Product.Name, l.Quantity,
+            (long)Math.Round(l.Amount * 100m))).ToArray(),
+        SubtotalCents = (long)Math.Round(Subtotal * 100m),
+        TaxCents = (long)Math.Round(Tax * 100m),
+        AmountCents = (long)Math.Round(Total * 100m),
+    };
+
+    [RelayCommand]
+    private async Task SendToTerminalAsync()
+    {
+        if (_link is null || !IsTerminalConnected)
+        {
+            Status = "No customer terminal connected";
+            return;
+        }
+
+        Status = await _link.SendAsync(BuildCartMessage())
+            ? $"Basket sent to customer terminal · {Money.Format(Total)}"
+            : "Failed to send basket to terminal";
+    }
+
+    // ----- Live cart mirroring -----
+
+    private string? _lastCartJson;
+
+    /// <summary>
+    /// Debounced push of the basket to the customer terminal. Called from
+    /// Refresh() so every mutation (add line, qty, void, promo, new sale)
+    /// lands on the PxRetailer screen without a manual send. Skipped while a
+    /// payment is in flight so we don't stomp the EMV screens.
+    /// </summary>
+    private void QueueCartSync()
+    {
+        if (_link is null || !IsTerminalConnected || IsAwaitingTerminal) return;
+        _cartSyncTimer.Stop();
+        _cartSyncTimer.Start();
+    }
+
+    private void FlushCartSync()
+    {
+        _cartSyncTimer.Stop();
+        if (_link is null || !IsTerminalConnected || IsAwaitingTerminal) return;
+
+        var message = BuildCartMessage();
+        var json = PosJson.Serialize(message);
+        if (json == _lastCartJson) return;
+        _lastCartJson = json;
+        _ = Task.Run(async () =>
+        {
+            if (!await _link.SendAsync(message))
+            {
+                OnUiThread(() => _lastCartJson = null); // retry on next change
+            }
+        });
+    }
+
     [RelayCommand]
     private async Task TenderCardAsync()
     {
@@ -413,6 +480,7 @@ public partial class MainViewModel : ViewModelBase
                 OrderId = _terminalOrderId,
                 AmountCents = (long)Math.Round(Balance * 100),
                 Currency = "USD",
+                Method = "CARD", // PxRetailer: straight into the EMV flow
             });
 
             if (!sent)
@@ -449,6 +517,34 @@ public partial class MainViewModel : ViewModelBase
 
     private void HandleTerminalMessage(PosMessage m)
     {
+        // A tender button on the PxRetailer form (PAYMENTSTATUS FireEvent):
+        // face/palm hands the sale to the WinkPay app, card starts EMV.
+        if (m.Type == PosMessageTypes.TenderSelected)
+        {
+            if (!IsAwaitingTerminal || _terminalOrderId is null) return;
+            var method = m.Method switch
+            {
+                "FACE" => "FACE",
+                "PALM" => "PALM",
+                "CARD" or "CREDIT" or "DEBIT" => "CARD",
+                _ => null,
+            };
+            if (method is null) return;
+
+            Status = method == "CARD"
+                ? "Customer chose card — starting EMV"
+                : $"Customer chose {m.Method!.ToLowerInvariant()} — starting WinkPay";
+            _ = _link!.SendAsync(new PosMessage
+            {
+                Type = PosMessageTypes.StartPayment,
+                OrderId = _terminalOrderId,
+                AmountCents = (long)Math.Round(Balance * 100),
+                Currency = "USD",
+                Method = method,
+            });
+            return;
+        }
+
         if (m.Type != PosMessageTypes.PaymentResult || !IsAwaitingTerminal) return;
         if (_terminalOrderId is not null && m.OrderId is not null && m.OrderId != _terminalOrderId) return;
 
@@ -458,6 +554,7 @@ public partial class MainViewModel : ViewModelBase
         switch (m.Status)
         {
             case "APPROVED":
+                _ = _link!.SendAsync(new PosMessage { Type = PosMessageTypes.ShowThanks });
                 var amount = m.AmountCents is { } cents ? cents / 100m : Balance;
                 Pay(m.Method ?? "Card · customer terminal", "Customer terminal · approved", Math.Min(amount, Balance));
                 break;
@@ -488,7 +585,39 @@ public partial class MainViewModel : ViewModelBase
         Pay("Visa •••• 4417", "Split 1 of 2", Math.Min(Balance, 500m));
 
     [RelayCommand]
-    private void TenderLink() => Status = "Payment link sent to customer";
+    private async Task TenderLoyallistAsync()
+    {
+        if (IsAwaitingTerminal) return;
+
+        if (_link is { IsConnected: true })
+        {
+            _terminalOrderId = $"{TxnId}-{Payments.Count + 1}";
+            IsAwaitingTerminal = true;
+            Refresh();
+            Status = "Customer choosing payment on terminal";
+
+            var sent = await _link.SendAsync(new PosMessage
+            {
+                Type = PosMessageTypes.StartPayment,
+                OrderId = _terminalOrderId,
+                AmountCents = (long)Math.Round(Balance * 100),
+                Currency = "USD",
+                Method = "BD_LOYALLIST", // PxRetailer: payment-options page
+            });
+
+            if (!sent)
+            {
+                IsAwaitingTerminal = false;
+                _terminalOrderId = null;
+                Status = "Customer terminal unreachable";
+                Refresh();
+            }
+        }
+        else
+        {
+            Status = "No customer terminal connected";
+        }
+    }
 
     private void Pay(string label, string detail, decimal amount)
     {
@@ -539,6 +668,7 @@ public partial class MainViewModel : ViewModelBase
         }
 
         foreach (var name in DerivedProps) OnPropertyChanged(name);
+        QueueCartSync();
     }
 
     private static readonly string[] DerivedProps =

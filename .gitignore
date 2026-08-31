@@ -9,3 +9,6 @@ obj/
 # IDE
 .vs/
 .idea/
+
+# PXRRS mTLS client keystore — regenerate per certs/README.md, do not commit
+windowsterminal/certs/*.p12

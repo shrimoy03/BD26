@@ -16,7 +16,7 @@ namespace MerchantTerminal.Services;
 /// customer-facing app connects to. One client at a time; a new connection
 /// replaces the previous one.
 /// </summary>
-public sealed class TerminalLink : IAsyncDisposable
+public sealed class TerminalLink : ITerminalLink
 {
     public const int DefaultPort = 8181;
 
@@ -30,7 +30,9 @@ public sealed class TerminalLink : IAsyncDisposable
 
     public bool IsConnected => _socket is { State: WebSocketState.Open };
 
-    public async Task StartAsync(int port = DefaultPort)
+    public Task StartAsync() => StartAsync(DefaultPort);
+
+    public async Task StartAsync(int port)
     {
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
