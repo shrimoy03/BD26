@@ -26,22 +26,9 @@ namespace MerchantTerminal.Services;
 /// or PXRRS on the terminal itself over Ethernet/Wi-Fi — same sequence, per
 /// PAX's "Assumptions &amp; Clarifications".
 ///
-/// Config (environment variables):
-///   POS_JPXSS_URL    REST base (default http://127.0.0.1:9090)
-///   POS_NOTIFY_URL   replyURL we register with /subscribe
-///                    (default http://127.0.0.1:8282/notify — use this PC's
-///                    LAN IP when the REST endpoint is the terminal itself)
-///   POS_PXRRS_P12       client-certificate PKCS#12 for mutual TLS. PXRRS on
-///                       the terminal requires it over https (default
-///                       certs/pxrrs-integration-client.p12; derived from the
-///                       JPxSerialServer bundle's integrationCustomer.jks,
-///                       password pax12345 — see certs/README).
-///   POS_PXRRS_P12_PASS  keystore password (default pax12345)
-///   POS_PXRRS_START_FORM  form shown to start a sale (default
-///                       StartTransaction — PAX's custom Bloomingdales form).
-///                       Set to a stock PxRetail form (e.g. PaymentScreen)
-///                       until the custom package is installed; in that mode
-///                       CANCEL_PAYMENT re-displays BackgroundScreen.
+/// Configured from <see cref="LinkConfig"/> — the setup screen (F9) writes the
+/// terminal IP to %APPDATA%\MerchantTerminal\settings.json, and the documented
+/// POS_* environment variables still override it. See <see cref="PosSettings"/>.
 /// </summary>
 public sealed class JpxRestLink : ITerminalLink
 {
@@ -66,40 +53,48 @@ public sealed class JpxRestLink : ITerminalLink
     private volatile bool _connected;
     private volatile bool _subscribed;
 
-    public JpxRestLink(string? baseUrl = null, string? notifyUrl = null)
+    public JpxRestLink(LinkConfig config)
     {
-        _baseUrl = (baseUrl
-            ?? Environment.GetEnvironmentVariable("POS_JPXSS_URL")
-            ?? "http://127.0.0.1:9090").TrimEnd('/');
-        _notifyUrl = notifyUrl
-            ?? Environment.GetEnvironmentVariable("POS_NOTIFY_URL")
-            ?? "http://127.0.0.1:8282/notify";
-        _startForm = Environment.GetEnvironmentVariable("POS_PXRRS_START_FORM") ?? FormStart;
-        _http = new HttpClient(BuildHandler(_baseUrl)) { Timeout = TimeSpan.FromSeconds(10) };
+        _baseUrl = config.BaseUrl.TrimEnd('/');
+        _notifyUrl = config.NotifyUrl;
+        _startForm = string.IsNullOrWhiteSpace(config.StartForm) ? FormStart : config.StartForm;
+        _http = new HttpClient(BuildHandler(config)) { Timeout = TimeSpan.FromSeconds(10) };
     }
+
+    /// <summary>Bundled fallback when no cert path is configured.</summary>
+    public static string DefaultCertPath =>
+        System.IO.Path.Combine(AppContext.BaseDirectory, "certs", "pxrrs-integration-client.p12");
+
+    public static string ResolveCertPath(LinkConfig config) =>
+        string.IsNullOrWhiteSpace(config.CertPath) ? DefaultCertPath : config.CertPath.Trim();
 
     /// <summary>
     /// PXRRS on the terminal serves HTTPS with the PAX self-signed chain and
     /// REQUIRES a client certificate (mutual TLS) — plain requests are dropped
     /// mid-handshake. JPxSerialServer on localhost stays plain HTTP.
     /// </summary>
-    private static HttpMessageHandler BuildHandler(string baseUrl)
+    private static HttpMessageHandler BuildHandler(LinkConfig config)
     {
         var handler = new HttpClientHandler();
-        if (!baseUrl.StartsWith("https", StringComparison.OrdinalIgnoreCase)) return handler;
+        if (!config.BaseUrl.StartsWith("https", StringComparison.OrdinalIgnoreCase)) return handler;
 
         // PAX chain is rooted at pxrrs-ca.pax.us (self-signed) — trust it for
         // the demo instead of installing the root into the OS store.
         handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
 
-        var p12 = Environment.GetEnvironmentVariable("POS_PXRRS_P12")
-            ?? System.IO.Path.Combine(AppContext.BaseDirectory, "certs", "pxrrs-integration-client.p12");
-        var pass = Environment.GetEnvironmentVariable("POS_PXRRS_P12_PASS") ?? "pax12345";
+        var p12 = ResolveCertPath(config);
         if (System.IO.File.Exists(p12))
         {
-            handler.ClientCertificates.Add(
-                System.Security.Cryptography.X509Certificates.X509CertificateLoader
-                    .LoadPkcs12FromFile(p12, pass));
+            try
+            {
+                handler.ClientCertificates.Add(
+                    System.Security.Cryptography.X509Certificates.X509CertificateLoader
+                        .LoadPkcs12FromFile(p12, config.CertPassword));
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"[JpxRestLink] WARNING: could not load {p12}: {e.Message}");
+            }
         }
         else
         {
@@ -110,6 +105,66 @@ public sealed class JpxRestLink : ITerminalLink
     }
 
     public bool IsConnected => _connected;
+
+    /// <summary>
+    /// One-shot reachability check for the setup screen. Distinguishes the
+    /// failures that actually happen in the field: wrong IP (timeout), nothing
+    /// listening (refused), and missing/rejected mTLS cert (handshake).
+    /// </summary>
+    public static async Task<(bool Ok, string Message)> TestAsync(
+        LinkConfig config, CancellationToken ct = default)
+    {
+        var https = config.BaseUrl.StartsWith("https", StringComparison.OrdinalIgnoreCase);
+        var certPath = ResolveCertPath(config);
+        if (https && !System.IO.File.Exists(certPath))
+        {
+            return (false, $"No client certificate at {certPath} — PXRRS requires mutual TLS. See certs/README.md.");
+        }
+
+        using var http = new HttpClient(BuildHandler(config)) { Timeout = TimeSpan.FromSeconds(6) };
+        try
+        {
+            var response = await http.PostAsync($"{config.BaseUrl.TrimEnd('/')}/getPackageList", null, ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                return (false, $"Terminal answered {(int)response.StatusCode} {response.ReasonPhrase}.");
+            }
+
+            return (true, "Connected — terminal answered getPackageList.");
+        }
+        catch (TaskCanceledException)
+        {
+            return (false, "Timed out after 6s. Check the IP and that the terminal is on this Wi-Fi network.");
+        }
+        catch (UriFormatException)
+        {
+            return (false, $"'{config.BaseUrl}' is not a valid address.");
+        }
+        catch (HttpRequestException e)
+        {
+            var inner = e.InnerException;
+            if (inner is System.Security.Authentication.AuthenticationException)
+            {
+                return (false, $"TLS handshake failed — PXRRS rejected our client certificate ({certPath}).");
+            }
+
+            if (inner is System.Net.Sockets.SocketException socket)
+            {
+                return socket.SocketErrorCode switch
+                {
+                    System.Net.Sockets.SocketError.ConnectionRefused =>
+                        (false, "Connection refused — nothing is listening on that port. Is PXRRS running on the terminal?"),
+                    System.Net.Sockets.SocketError.HostUnreachable or
+                    System.Net.Sockets.SocketError.NetworkUnreachable =>
+                        (false, "Host unreachable — the terminal is not on this subnet."),
+                    _ => (false, socket.Message),
+                };
+            }
+
+            return (false, inner is null ? e.Message : $"{e.Message} — {inner.Message}");
+        }
+    }
 
     public async Task StartAsync()
     {

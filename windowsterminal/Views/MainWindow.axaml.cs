@@ -98,14 +98,26 @@ public partial class MainWindow : Window
         vm.AddItemCommand.Execute(vm.QuickKeys[1]);
         vm.AddItemCommand.Execute(vm.QuickKeys[2]);
         await Shot("08-register-light");
+        vm.OpenSetupCommand.Execute(null);
+        await Shot("09-setup-light");
+        vm.ToggleThemeCommand.Execute(null);
+        await Shot("10-setup-dark");
         Environment.Exit(0);
     }
 
     private MainViewModel? Vm => DataContext as MainViewModel;
 
+    /// <summary>
+    /// The scan-gun handlers are window-wide, so they would otherwise swallow
+    /// every keystroke typed into the setup screen's fields — and Enter would
+    /// submit a bogus SKU instead of the IP being entered.
+    /// </summary>
+    private bool IsTypingInField() => FocusManager?.GetFocusedElement() is TextBox;
+
     private void OnTextInput(object? sender, TextInputEventArgs e)
     {
         if (Vm is not { } vm || string.IsNullOrEmpty(e.Text)) return;
+        if (IsTypingInField()) return;
         foreach (var c in e.Text)
         {
             vm.EntryChar(c);
@@ -115,6 +127,7 @@ public partial class MainWindow : Window
     private void OnKeyDownHandler(object? sender, KeyEventArgs e)
     {
         if (Vm is not { } vm) return;
+        if (IsTypingInField()) return;
         switch (e.Key)
         {
             case Key.Enter:

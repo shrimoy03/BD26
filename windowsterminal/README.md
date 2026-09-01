@@ -68,6 +68,36 @@ node --experimental-websocket tools/fake-terminal.mjs
 
 Connects to the register and auto-approves any `START_PAYMENT` after 1.5 s.
 
+## Setup screen (per-register configuration)
+
+Press **F9**, or click the terminal pill in the header, to open Terminal setup.
+This is the supported way to configure a register — no environment variables and
+no rebuild, so the same published build drops onto every store machine:
+
+- **Connection** — wireless PXRRS, Wi-Fi WebSocket, or USB/PCL.
+- **Terminal** — the PAX device's IP and port, with an HTTPS/mTLS toggle. The
+  resolved REST base is previewed live.
+- **This register** — the callback address PXRRS posts results to. Left blank it
+  auto-detects the adapter that actually routes to the terminal, which matters on
+  a store PC with several NICs (Windows' `169.254.*` link-local addresses are
+  skipped). Override it only to pin a specific NIC.
+- **Client certificate** — path to the PAX `.p12`, with a file picker and a
+  found/missing indicator.
+- **Test connection** — POSTs `getPackageList` and reports what came back,
+  distinguishing a wrong IP (timeout), nothing listening (refused), and a
+  missing/rejected client certificate (TLS handshake).
+
+**Save & reconnect** writes the settings and rebuilds the live link in place —
+no restart. Settings live in:
+
+```
+%APPDATA%\MerchantTerminal\settings.json
+```
+
+Copy that file to preconfigure another register. The `POS_*` environment
+variables below still override the saved values when set; the setup screen shows
+a warning listing any that are currently doing so.
+
 ## PAX-agreed link: JPXSS/PXRRS REST flow (jpxss mode)
 
 The flow from PAX's BloomingdaleDemo sequence diagram: the register drives
@@ -79,11 +109,14 @@ the result comes back via a `notify IS_TRANS_STARTED=2` callback followed by
 PC (USB-tethered terminal, PAX RS232-USB driver required) or against PXRRS on
 the terminal's own IP over Ethernet/Wi-Fi (no JPXSS at all).
 
+Configure it in the setup screen (F9) — or override from the environment:
+
 ```bash
 POS_TERMINAL_LINK=jpxss dotnet run
-# POS_JPXSS_URL   REST base            (default http://127.0.0.1:9090)
-# POS_NOTIFY_URL  our notify callback  (default http://127.0.0.1:8282/notify —
-#                 use this PC's LAN IP when talking to the terminal directly)
+# POS_JPXSS_URL   REST base            (default: built from the setup screen's
+#                 host/port/TLS fields, else http://127.0.0.1:9090)
+# POS_NOTIFY_URL  our notify callback  (default: auto-detected LAN IP on the
+#                 configured notify port, e.g. http://192.168.1.149:8282/notify)
 ```
 
 Terminal-side counterpart: `../winkpos` `link/PxrrsTransport.kt`

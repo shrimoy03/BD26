@@ -54,8 +54,26 @@
                 <TextBlock DockPanel.Dock="Right" Classes="mono dim" Text="{Binding ClockText}"
                            FontSize="14" VerticalAlignment="Center" Margin="0,0,28,0" />
 
+                <!-- Terminal link status · click (or F9) for setup -->
+                <Button DockPanel.Dock="Right" Classes="pos" Height="36" Padding="12,0"
+                        VerticalAlignment="Center" Margin="0,0,14,0"
+                        Command="{Binding OpenSetupCommand}"
+                        ToolTip.Tip="Terminal setup (F9)">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                                 Fill="{DynamicResource Pos}" IsVisible="{Binding IsTerminalConnected}" />
+                        <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                                 Fill="{DynamicResource Danger}" IsVisible="{Binding !IsTerminalConnected}" />
+                        <StackPanel Spacing="1" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding TerminalStatusLabel}" FontSize="11.5" />
+                            <TextBlock Classes="mono" Text="{Binding TerminalTargetLabel}" FontSize="9"
+                                       Foreground="{DynamicResource Dim}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Button>
+
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8"
-                            VerticalAlignment="Center" Margin="0,0,28,0">
+                            VerticalAlignment="Center" Margin="0,0,20,0">
                     <Ellipse Width="7" Height="7" Fill="{DynamicResource Pos}" VerticalAlignment="Center" />
                     <TextBlock Text="Online" FontSize="12" Foreground="{DynamicResource Pos}" />
                 </StackPanel>

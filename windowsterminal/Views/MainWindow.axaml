@@ -20,6 +20,7 @@
         <KeyBinding Gesture="F2" Command="{Binding ItemSearchCommand}" />
         <KeyBinding Gesture="F4" Command="{Binding OpenPromosCommand}" />
         <KeyBinding Gesture="F6" Command="{Binding PriceOverrideCommand}" />
+        <KeyBinding Gesture="F9" Command="{Binding OpenSetupCommand}" />
     </Window.KeyBindings>
 
     <Viewbox Stretch="Uniform">
@@ -29,6 +30,7 @@
             <v:PromosOverlay IsVisible="{Binding ShowPromos}" />
             <v:TenderOverlay IsVisible="{Binding ShowTender}" />
             <v:DoneOverlay IsVisible="{Binding ShowDone}" />
+            <v:SetupOverlay IsVisible="{Binding ShowSetup}" />
         </Panel>
     </Viewbox>
 </Window>

@@ -1,0 +1,233 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MerchantTerminal.ViewModels"
+             x:Class="MerchantTerminal.Views.SetupOverlay"
+             x:DataType="vm:MainViewModel">
+
+    <Panel Background="{StaticResource Scrim}">
+        <Button Classes="scrim" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                Command="{Binding Setup.CancelCommand}" />
+
+        <Border Width="860" MaxHeight="880" HorizontalAlignment="Center" VerticalAlignment="Center"
+                Background="{DynamicResource Panel}" BorderBrush="{DynamicResource Line}"
+                BorderThickness="1" CornerRadius="16" ClipToBounds="True"
+                BoxShadow="0 18 44 0 #73000000">
+            <DockPanel>
+
+                <!-- ===== Header ===== -->
+                <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1"
+                        Padding="26,22,26,18">
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="serif" Text="Terminal setup" FontSize="26" />
+                        <TextBlock Text="Point this register at its customer-facing payment terminal."
+                                   FontSize="13" Foreground="{DynamicResource Dim}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== Footer ===== -->
+                <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0"
+                        Padding="26,16">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Left" Classes="mono" Text="{Binding Setup.SettingsPath}"
+                                   FontSize="10.5" Foreground="{DynamicResource Dim}"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   ToolTip.Tip="Settings are saved here. Copy this file to roll out another register." />
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="10"
+                                    HorizontalAlignment="Right">
+                            <Button Classes="ghost" Height="44" Padding="22,0"
+                                    Command="{Binding Setup.CancelCommand}">
+                                <TextBlock Text="Cancel" FontSize="13" />
+                            </Button>
+                            <Button Classes="pos" Height="44" Padding="22,0"
+                                    IsEnabled="{Binding !Setup.IsBusy}"
+                                    Command="{Binding Setup.TestCommand}">
+                                <TextBlock Text="{Binding Setup.BusyLabel}" FontSize="13" />
+                            </Button>
+                            <Button Classes="cta" Height="44" Padding="26,0"
+                                    IsEnabled="{Binding !Setup.IsBusy}"
+                                    Command="{Binding Setup.SaveCommand}">
+                                <TextBlock Text="Save &amp; reconnect" FontSize="13" FontWeight="SemiBold"
+                                           LetterSpacing="0.5" />
+                            </Button>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- ===== Body ===== -->
+                <ScrollViewer>
+                    <StackPanel Margin="26,20" Spacing="22">
+
+                        <!-- Result banner -->
+                        <Border IsVisible="{Binding Setup.HasResult}" CornerRadius="8" Padding="14,12"
+                                Background="{DynamicResource Panel2}" BorderThickness="1"
+                                BorderBrush="{DynamicResource Line}">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                         Fill="{DynamicResource Pos}"
+                                         IsVisible="{Binding !Setup.ResultIsError}" />
+                                <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                         Fill="{DynamicResource Danger}"
+                                         IsVisible="{Binding Setup.ResultIsError}" />
+                                <TextBlock Text="{Binding Setup.Result}" FontSize="12.5" TextWrapping="Wrap"
+                                           MaxWidth="720" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Environment override warning -->
+                        <Border IsVisible="{Binding Setup.HasEnvOverrides}" CornerRadius="8" Padding="14,12"
+                                Background="{DynamicResource Panel2}" BorderThickness="1"
+                                BorderBrush="{DynamicResource Danger}">
+                            <TextBlock Text="{Binding Setup.EnvOverrideNote}" FontSize="12.5"
+                                       TextWrapping="Wrap" Foreground="{DynamicResource Danger}" />
+                        </Border>
+
+                        <!-- ===== Connection mode ===== -->
+                        <StackPanel Spacing="10">
+                            <TextBlock Classes="label" Text="CONNECTION" />
+                            <RadioButton Classes="pos" GroupName="mode" IsChecked="{Binding Setup.IsJpxss}"
+                                         Content="Wireless PXRRS &#8212; REST to the terminal over Wi-Fi / Ethernet" />
+                            <RadioButton Classes="pos" GroupName="mode" IsChecked="{Binding Setup.IsWebSocket}"
+                                         Content="Wi-Fi WebSocket &#8212; the winkpos app connects in to this register" />
+                            <RadioButton Classes="pos" GroupName="mode" IsChecked="{Binding Setup.IsPcl}"
+                                         Content="USB &#8212; JPxSerialServer raw PCL socket on this PC" />
+                        </StackPanel>
+
+                        <!-- ===== Terminal address (jpxss) ===== -->
+                        <StackPanel Spacing="12" IsVisible="{Binding Setup.IsJpxss}">
+                            <Border Height="1" Background="{DynamicResource Line}" />
+                            <TextBlock Classes="label" Text="TERMINAL" />
+
+                            <Grid ColumnDefinitions="*,16,150">
+                                <StackPanel Grid.Column="0" Spacing="6">
+                                    <TextBlock Text="IP address" FontSize="12"
+                                               Foreground="{DynamicResource Dim}" />
+                                    <TextBox Classes="pos" PlaceholderText="192.168.1.234"
+                                             Text="{Binding Setup.TerminalHost}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Spacing="6">
+                                    <TextBlock Text="Port" FontSize="12" Foreground="{DynamicResource Dim}" />
+                                    <TextBox Classes="pos" PlaceholderText="9090"
+                                             Text="{Binding Setup.TerminalPort}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <CheckBox Classes="pos" IsChecked="{Binding Setup.UseTls}"
+                                      Content="{Binding Setup.TlsLabel}" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="Register drives" FontSize="12"
+                                           Foreground="{DynamicResource Dim}" VerticalAlignment="Center" />
+                                <TextBlock Classes="mono" Text="{Binding Setup.TargetPreview}" FontSize="12.5"
+                                           Foreground="{DynamicResource Accent}" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- ===== Callback (jpxss) ===== -->
+                        <StackPanel Spacing="12" IsVisible="{Binding Setup.IsJpxss}">
+                            <Border Height="1" Background="{DynamicResource Line}" />
+                            <TextBlock Classes="label" Text="THIS REGISTER" />
+                            <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource Dim}"
+                                       Text="PXRRS posts payment results back to us, so the terminal must be able to reach this address. Leave the host blank to auto-detect the adapter that routes to the terminal." />
+
+                            <Grid ColumnDefinitions="*,16,150">
+                                <StackPanel Grid.Column="0" Spacing="6">
+                                    <TextBlock Text="Callback host (blank = auto)" FontSize="12"
+                                               Foreground="{DynamicResource Dim}" />
+                                    <TextBox Classes="pos" PlaceholderText="{Binding Setup.DetectedLanIp}"
+                                             Text="{Binding Setup.NotifyHost}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Spacing="6">
+                                    <TextBlock Text="Port" FontSize="12" Foreground="{DynamicResource Dim}" />
+                                    <TextBox Classes="pos" PlaceholderText="8282"
+                                             Text="{Binding Setup.NotifyPort}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="Terminal calls back to" FontSize="12"
+                                           Foreground="{DynamicResource Dim}" VerticalAlignment="Center" />
+                                <TextBlock Classes="mono" Text="{Binding Setup.NotifyUrlPreview}" FontSize="12.5"
+                                           Foreground="{DynamicResource Accent}" VerticalAlignment="Center" />
+                                <Button Classes="ghost" Height="28" Padding="12,0"
+                                        Command="{Binding Setup.RescanCommand}">
+                                    <TextBlock Text="Re-detect" FontSize="11" />
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- ===== Certificate (jpxss) ===== -->
+                        <StackPanel Spacing="12" IsVisible="{Binding Setup.IsJpxss}">
+                            <Border Height="1" Background="{DynamicResource Line}" />
+                            <TextBlock Classes="label" Text="CLIENT CERTIFICATE (MUTUAL TLS)" />
+
+                            <Grid ColumnDefinitions="*,10,Auto">
+                                <TextBox Grid.Column="0" Classes="pos"
+                                         PlaceholderText="certs/pxrrs-integration-client.p12 (bundled default)"
+                                         Text="{Binding Setup.ClientCertPath}" />
+                                <Button Grid.Column="2" Classes="pos" Height="40" Padding="18,0"
+                                        Click="OnBrowseCertificate">
+                                    <TextBlock Text="Browse" FontSize="13" />
+                                </Button>
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                         Fill="{DynamicResource Pos}" IsVisible="{Binding Setup.CertFound}" />
+                                <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                         Fill="{DynamicResource Danger}" IsVisible="{Binding !Setup.CertFound}" />
+                                <TextBlock Classes="mono" Text="{Binding Setup.CertStatus}" FontSize="11.5"
+                                           Foreground="{DynamicResource Dim}" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" MaxWidth="640" />
+                            </StackPanel>
+
+                            <Grid ColumnDefinitions="240,16,*">
+                                <StackPanel Grid.Column="0" Spacing="6">
+                                    <TextBlock Text="Keystore password" FontSize="12"
+                                               Foreground="{DynamicResource Dim}" />
+                                    <TextBox Classes="pos" PasswordChar="*"
+                                             Text="{Binding Setup.ClientCertPassword}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Spacing="6">
+                                    <TextBlock Text="Start form" FontSize="12"
+                                               Foreground="{DynamicResource Dim}" />
+                                    <TextBox Classes="pos" PlaceholderText="StartTransaction"
+                                             Text="{Binding Setup.StartForm}"
+                                             ToolTip.Tip="StartTransaction = PAX's custom Bloomingdale's package. Use PaymentScreen until it is installed." />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- ===== WebSocket ===== -->
+                        <StackPanel Spacing="12">
+                            <Border Height="1" Background="{DynamicResource Line}" />
+                            <TextBlock Classes="label" Text="WINKPAY WEBSOCKET" />
+                            <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource Dim}"
+                                       Text="Port the winkpos app connects in on. Used on its own in WebSocket mode, and alongside PXRRS for the biometric handoff." />
+                            <StackPanel Width="150" HorizontalAlignment="Left" Spacing="6">
+                                <TextBlock Text="Port" FontSize="12" Foreground="{DynamicResource Dim}" />
+                                <TextBox Classes="pos" PlaceholderText="8181" Text="{Binding Setup.WebSocketPort}" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- ===== PCL ===== -->
+                        <StackPanel Spacing="12" IsVisible="{Binding Setup.IsPcl}">
+                            <Border Height="1" Background="{DynamicResource Line}" />
+                            <TextBlock Classes="label" Text="JPXSERIALSERVER (USB)" />
+                            <Grid ColumnDefinitions="*,16,150">
+                                <StackPanel Grid.Column="0" Spacing="6">
+                                    <TextBlock Text="Host" FontSize="12" Foreground="{DynamicResource Dim}" />
+                                    <TextBox Classes="pos" PlaceholderText="127.0.0.1" Text="{Binding Setup.PclHost}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Spacing="6">
+                                    <TextBlock Text="Port" FontSize="12" Foreground="{DynamicResource Dim}" />
+                                    <TextBox Classes="pos" PlaceholderText="7001" Text="{Binding Setup.PclPort}" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+    </Panel>
+</UserControl>

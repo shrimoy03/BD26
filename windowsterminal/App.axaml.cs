@@ -20,24 +20,23 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            // POS_TERMINAL_LINK selects the customer-terminal transport:
+            // The transport is chosen by the saved link mode (setup screen, F9)
+            // with POS_TERMINAL_LINK still overriding it:
             //   jpxss -> PAX-agreed REST flow (JPxSerialServer over USB, or
             //            PXRRS on the terminal directly over Ethernet/Wi-Fi)
             //   pcl   -> JPxSerialServer's raw PCL TCP socket
             //   else  -> the Wi-Fi WebSocket server (default)
-            _terminalLink = System.Environment.GetEnvironmentVariable("POS_TERMINAL_LINK") switch
-            {
-                "jpxss" => new CompositeLink(new JpxRestLink(), new TerminalLink()),
-                "pcl" => new PclSocketLink(),
-                _ => (ITerminalLink)new TerminalLink(),
-            };
-            _ = _terminalLink.StartAsync().ContinueWith(
+            // The host owns the live link so the setup screen can retarget a
+            // different terminal IP without restarting the register.
+            var host = new TerminalLinkHost();
+            _terminalLink = host;
+            _ = host.ApplyAsync(PosSettings.Load()).ContinueWith(
                 t => System.Console.WriteLine($"[TerminalLink] failed to start: {t.Exception?.GetBaseException().Message}"),
                 System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
 
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new MainViewModel(_terminalLink),
+                DataContext = new MainViewModel(host),
             };
 
             desktop.ShutdownRequested += async (_, _) =>

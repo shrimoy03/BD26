@@ -20,6 +20,7 @@ public enum Overlay
     Promos,
     Tender,
     Done,
+    Setup,
 }
 
 public partial class MainViewModel : ViewModelBase
@@ -44,6 +45,7 @@ public partial class MainViewModel : ViewModelBase
     };
 
     private readonly ITerminalLink? _link;
+    private readonly TerminalLinkHost? _host;
     private readonly DispatcherTimer _clock;
     private readonly DispatcherTimer _cartSyncTimer;
     private int _uid = 1;
@@ -55,6 +57,13 @@ public partial class MainViewModel : ViewModelBase
     public MainViewModel(ITerminalLink? link)
     {
         _link = link;
+        _host = link as TerminalLinkHost;
+        Setup = new SetupViewModel(_host, () => OnUiThread(() =>
+        {
+            ActiveOverlay = Overlay.None;
+            OnPropertyChanged(nameof(TerminalTargetLabel));
+        }));
+
         if (_link is not null)
         {
             _link.ClientConnected += () => OnUiThread(() =>
@@ -118,13 +127,15 @@ public partial class MainViewModel : ViewModelBase
     public partial CustomerRecord? Customer { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowCustomer), nameof(ShowPromos), nameof(ShowTender), nameof(ShowDone))]
+    [NotifyPropertyChangedFor(nameof(ShowCustomer), nameof(ShowPromos), nameof(ShowTender),
+        nameof(ShowDone), nameof(ShowSetup))]
     public partial Overlay ActiveOverlay { get; set; } = Overlay.None;
 
     [ObservableProperty]
     public partial bool IsDarkTheme { get; set; } = true;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TerminalStatusLabel), nameof(TerminalTargetLabel), nameof(CardTileHint))]
     public partial bool IsTerminalConnected { get; set; }
 
     [ObservableProperty]
@@ -135,7 +146,16 @@ public partial class MainViewModel : ViewModelBase
     public bool ShowPromos => ActiveOverlay == Overlay.Promos;
     public bool ShowTender => ActiveOverlay == Overlay.Tender;
     public bool ShowDone => ActiveOverlay == Overlay.Done;
+    public bool ShowSetup => ActiveOverlay == Overlay.Setup;
     public bool TendersEnabled => !IsAwaitingTerminal;
+
+    /// <summary>Setup screen (F9). Null host = design-time / no live link.</summary>
+    public SetupViewModel Setup { get; }
+
+    public string TerminalStatusLabel => IsTerminalConnected ? "Terminal" : "No terminal";
+    public string TerminalTargetLabel => _host is null
+        ? "Not configured"
+        : TerminalLinkHost.Describe(_host.Config);
 
     public string ThemeLabel => IsDarkTheme ? "LIGHT THEME" : "DARK THEME";
     public string EntryDisplay => EntryBuffer + "▌";
@@ -386,6 +406,19 @@ public partial class MainViewModel : ViewModelBase
     {
         if (IsAwaitingTerminal) return; // don't leave tender mid-authorisation
         ActiveOverlay = Overlay.None;
+    }
+
+    [RelayCommand]
+    private void OpenSetup()
+    {
+        if (IsAwaitingTerminal)
+        {
+            Status = "Finish or cancel the payment before changing setup";
+            return;
+        }
+
+        Setup.RescanCommand.Execute(null);
+        ActiveOverlay = Overlay.Setup;
     }
 
     [RelayCommand]

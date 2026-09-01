@@ -199,6 +199,43 @@
             <Setter Property="Foreground" Value="{DynamicResource Pos}" />
         </Style>
 
+        <!-- ===== Setup screen inputs ===== -->
+        <Style Selector="TextBox.pos">
+            <Setter Property="FontFamily" Value="{StaticResource Mono}" />
+            <Setter Property="FontSize" Value="13.5" />
+            <Setter Property="Height" Value="40" />
+            <Setter Property="MinHeight" Value="40" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="{DynamicResource Panel2}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CaretBrush" Value="{DynamicResource Accent}" />
+            <Setter Property="SelectionBrush" Value="{DynamicResource Accent}" />
+        </Style>
+        <Style Selector="TextBox.pos /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="{DynamicResource Panel2}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+        </Style>
+        <Style Selector="TextBox.pos:pointerover /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="{DynamicResource Panel2}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+        </Style>
+        <Style Selector="TextBox.pos:focus /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="{DynamicResource Panel2}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <Style Selector="RadioButton.pos, CheckBox.pos">
+            <Setter Property="FontFamily" Value="{StaticResource Sans}" />
+            <Setter Property="FontSize" Value="13.5" />
+            <Setter Property="Foreground" Value="{DynamicResource Text}" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+
         <!-- Invisible scrim click-catcher -->
         <Style Selector="Button.scrim">
             <Setter Property="Background" Value="Transparent" />
