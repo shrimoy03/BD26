@@ -7,3 +7,7 @@ local.properties
 captures/
 .externalNativeBuild/
 .cxx/
+
+# PXRRS mTLS client keystore — derive it from the PAX bundle, do not commit.
+# See windowsterminal/certs/README.md.
+app/src/main/assets/*.p12

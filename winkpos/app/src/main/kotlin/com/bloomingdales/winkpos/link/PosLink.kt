@@ -14,7 +14,9 @@ import java.util.concurrent.CopyOnWriteArrayList
  * Transport is chosen by POS_LINK_MODE in local.properties:
  *   "pxrrs" — PAX-agreed flow: REST to the PxRetailer service on this
  *             terminal (PXRRS), form variables as mailboxes. Optional
- *             POS_LINK_PXRRS_URL overrides http://127.0.0.1:9090.
+ *             POS_LINK_PXRRS_URL overrides https://127.0.0.1:9090. Needs
+ *             assets/pxrrs-integration-client.p12 for the mutual-TLS
+ *             handshake — see windowsterminal/certs/README.md.
  *   "ws"    — WebSocket to the register app itself (needs POS_LINK_WS_URL,
  *             e.g. ws://192.168.1.50:8181/pos). Works today over Wi-Fi.
  *   "pcl"   — PCL frames over the USB serial port via JPxSerialServer on the
@@ -74,8 +76,12 @@ object PosLink {
                     WebSocketTransport(url)
                 }
             }
+            // PXRRS requires HTTPS with a client certificate even on loopback,
+            // so the default is https:// and the transport needs a Context to
+            // read the bundled keystore out of assets.
             "pxrrs" -> PxrrsTransport(
-                BuildConfig.POS_LINK_PXRRS_URL.ifBlank { "http://127.0.0.1:9090" },
+                BuildConfig.POS_LINK_PXRRS_URL.ifBlank { "https://127.0.0.1:9090" },
+                context = context.applicationContext,
             )
             "pcl" -> PclSerialTransport(PaxNeptuneSerialIo(context.applicationContext))
             else -> null

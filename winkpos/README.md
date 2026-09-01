@@ -34,12 +34,47 @@ calling the **Wink payments API directly** from the host app.
   WINK_ENV=stage   # qa | stage | prod
   ```
 
-- Build & install (JDK 17 is pinned via `org.gradle.java.home`):
+- Build & install (JDK 17 is pinned via `org.gradle.java.home` — note that path
+  is macOS-specific; on Windows/Linux point it at a local JDK 17–21):
 
   ```sh
   ./gradlew :app:assembleDebug
   adb install -r app/build/outputs/apk/debug/app-debug.apk
   ```
+
+## Register link over PXRRS
+
+Per PAX's BloomingdaleDemo sequence diagram this app is the `:WinkPay`
+participant: it subscribes to the PxRetailer REST service running on the *same*
+terminal and takes the biometric leg of the sale. Enable it in
+`local.properties`:
+
+```properties
+POS_LINK_MODE=pxrrs
+# optional; defaults to https://127.0.0.1:9090
+POS_LINK_PXRRS_URL=https://127.0.0.1:9090
+```
+
+PXRRS serves HTTPS and requires a client certificate even on loopback, so drop
+the keystore at `app/src/main/assets/pxrrs-integration-client.p12` (password
+`pax12345`). Derive it from the PAX bundle's `integrationCustomer.jks` — see
+`windowsterminal/certs/README.md`. It is gitignored.
+
+Two trigger paths are handled, so the app works before and after PAX ships the
+custom form package:
+
+| Terminal package | Trigger | Amount source |
+|---|---|---|
+| Stock `PxRetail` | `PAYMENTSTATUS` = `face`/`palm` fired by the form's tender button | `STR.AMOUNTOK`, mirrored there by the register |
+| PAX custom | `IS_TRANS_STARTED=1` | `START_TRANS_REQ_DATA` (JSON order details) |
+
+The register backgrounds PxRetailer (`BOOL.FOREGROUND=false`) when it sees the
+biometric tender, which is what lets this app take the screen. Launching an
+activity while backgrounded needs the overlay appop:
+
+```sh
+adb shell appops set com.bloomingdales.winkpos SYSTEM_ALERT_WINDOW allow
+```
 
 ## Notes
 
