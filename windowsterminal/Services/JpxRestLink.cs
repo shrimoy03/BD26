@@ -255,14 +255,16 @@ public sealed class JpxRestLink : ITerminalLink
 
             if (alive && !_subscribed)
             {
-                var foregroundOk = await PostAsync($"/setVariable",
-                    $$"""{"variables":[{"name":"{{VarForeground}}","value":"false"}]}""");
+                var foregroundOk = await SetForegroundAsync(false);
                 var subscribeOk =
                     await PostAsync($"/subscribe?replyURL={Uri.EscapeDataString(_notifyUrl)}", null);
-                // FOREGROUND belongs to PAX's custom Bloomingdales package; a
-                // stock PxRetail package may not define it, so only require it
-                // when we're actually driving the custom form.
-                _subscribed = subscribeOk && (foregroundOk || _startForm != FormStart);
+                // Subscribing is what actually matters; a package that does not
+                // define the foreground flag should not fail the whole link.
+                _subscribed = subscribeOk;
+                if (!foregroundOk)
+                {
+                    Console.WriteLine($"[JpxRestLink] note: {VarForeground} not settable on this package");
+                }
             }
 
             var connected = alive && _subscribed;
@@ -302,12 +304,29 @@ public sealed class JpxRestLink : ITerminalLink
 
         if (message.Type == PosMessageTypes.ShowThanks)
         {
+            // Take the screen back from WinkPay before showing the receipt.
+            await SetForegroundAsync(true);
             return await PostAsync("/displayForm?formName=ThankYouScreen", null);
+        }
+
+        // A biometric tender is captured by WinkPay, which is a separate Android
+        // app. PxRetailer owns the display, so it has to drop the foreground or
+        // the customer never sees WinkPay come up.
+        if (message.Type == PosMessageTypes.StartPayment && message.Method is "FACE" or "PALM")
+        {
+            return await SetForegroundAsync(false);
         }
 
         if (message.Type is not (PosMessageTypes.StartPayment or PosMessageTypes.CancelPayment))
         {
             return false;
+        }
+
+        // Cancelling out of a biometric means WinkPay is on screen; reclaim it
+        // before displaying the cancel/idle form below.
+        if (message.Type == PosMessageTypes.CancelPayment)
+        {
+            await SetForegroundAsync(true);
         }
 
         // Stock-form mode (custom StartTransaction package not installed yet):
@@ -378,6 +397,15 @@ public sealed class JpxRestLink : ITerminalLink
     }
 
     // ----- REST helpers -----
+
+    /// <summary>
+    /// Hand the terminal display to (false) or take it back from (true) other
+    /// Android apps on the device — this is how WinkPay gets the screen for
+    /// biometric capture while PxRetailer keeps running underneath.
+    /// </summary>
+    private Task<bool> SetForegroundAsync(bool foreground) => PostAsync(
+        "/setVariable",
+        $$"""{"variables":[{"name":"{{VarForeground}}","value":"{{(foreground ? "true" : "false")}}"}]}""");
 
     private async Task<bool> ProbeAsync()
     {

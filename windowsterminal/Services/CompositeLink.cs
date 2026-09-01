@@ -64,7 +64,13 @@ public sealed class CompositeLink : ITerminalLink
         {
             case PosMessageTypes.StartPayment
                 when message.Method is "FACE" or "PALM":
-                return await _ws.SendAsync(message);
+                // WinkPay runs the capture, but PxRetailer owns the display, so
+                // both sides are involved: launch WinkPay first so it covers the
+                // form, then let the REST link drop PxRetailer's foreground.
+                // Backgrounding first would flash the Android home screen.
+                var winkPayOk = await _ws.SendAsync(message);
+                var yieldedOk = await _rest.SendAsync(message);
+                return winkPayOk || yieldedOk;
             case PosMessageTypes.StartPayment:
                 return await _rest.SendAsync(message);
             case PosMessageTypes.ShowThanks:

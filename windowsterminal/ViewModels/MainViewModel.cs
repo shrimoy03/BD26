@@ -554,7 +554,6 @@ public partial class MainViewModel : ViewModelBase
         // face/palm hands the sale to the WinkPay app, card starts EMV.
         if (m.Type == PosMessageTypes.TenderSelected)
         {
-            if (!IsAwaitingTerminal || _terminalOrderId is null) return;
             var method = m.Method switch
             {
                 "FACE" => "FACE",
@@ -563,6 +562,24 @@ public partial class MainViewModel : ViewModelBase
                 _ => null,
             };
             if (method is null) return;
+
+            if (Lines.Count == 0)
+            {
+                Status = "Customer picked a tender but the basket is empty";
+                return;
+            }
+
+            // The customer can start the sale themselves from the tender
+            // buttons on the PxRetailer form, without the cashier pressing
+            // Tender first. Open the payment here so the register follows along
+            // instead of dropping the event.
+            if (!IsAwaitingTerminal)
+            {
+                _terminalOrderId = $"{TxnId}-{Payments.Count + 1}";
+                IsAwaitingTerminal = true;
+                ActiveOverlay = Overlay.Tender;
+                Refresh();
+            }
 
             Status = method == "CARD"
                 ? "Customer chose card — starting EMV"
