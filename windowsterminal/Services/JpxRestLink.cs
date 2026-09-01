@@ -654,10 +654,46 @@ public sealed class JpxRestLink : ITerminalLink
         }
     }
 
-    private Task<bool> SubscribeAsync()
+    /// <summary>
+    /// /subscribe takes the callback server's X509 certificate as a file
+    /// attachment ("filename"), and per the API docs PXRRS needs it to
+    /// authenticate an HTTPS replyURL before it will post anything there.
+    /// Without it the subscription still registers — getSubscriptionData
+    /// happily reports the replyAddress — but every notification is dropped at
+    /// the TLS handshake, which looks exactly like the terminal never firing an
+    /// event. The certificate sent is exported from the very keystore the
+    /// notify listener presents, so the two can never drift apart.
+    /// </summary>
+    private async Task<bool> SubscribeAsync()
     {
         _cyclesSinceSubscribe = 0;
-        return PostAsync($"/subscribe?replyURL={Uri.EscapeDataString(_notifyUrl)}", null);
+        var path = $"/subscribe?replyURL={Uri.EscapeDataString(_notifyUrl)}";
+
+        var certificate = LoadNotifyCertificate();
+        if (certificate is null) return await PostAsync(path, null);
+
+        try
+        {
+            var pem = System.Security.Cryptography.PemEncoding.WriteString(
+                "CERTIFICATE", certificate.RawData);
+
+            using var form = new System.Net.Http.MultipartFormDataContent();
+            var part = new StringContent(pem, Encoding.ASCII);
+            part.Headers.ContentType =
+                new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-x509-ca-cert");
+            form.Add(part, "filename", "notify-server.cert");
+
+            var response = await _http.PostAsync($"{_baseUrl}{path}", form);
+            var body = await response.Content.ReadAsStringAsync();
+            var ok = response.IsSuccessStatusCode && IsResultOk(body);
+            Console.WriteLine($"[JpxRestLink] subscribe (with callback cert) -> {body}");
+            return ok;
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"[JpxRestLink] subscribe with certificate failed: {e.Message}");
+            return await PostAsync(path, null);
+        }
     }
 
     private async Task<bool> ProbeAsync()
