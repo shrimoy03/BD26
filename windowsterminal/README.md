@@ -131,6 +131,36 @@ POS_TERMINAL_LINK=jpxss POS_TERMINAL_TEST_DIR=/tmp/jpxsstest dotnet run
 Form/variable names come from the sequence diagram and are marked
 `TODO(PAX)` pending the form package they ship.
 
+### Running against a stock PxRetail package
+
+The diagram assumes PAX's custom Bloomingdale's package. Verified against a live
+A3700 (PxRetailer 2.01.16, PXRRS 1.16.42), a stock install defines **none** of
+`START_TRANS_REQ_DATA`, `TRANS_RESULT`, `IS_TRANS_STARTED`, `StartTransaction`
+or `EndTransaction`. What does exist is used instead, so the biometric flow runs
+today:
+
+| Diagram step | Stock equivalent |
+|---|---|
+| `FOREGROUND` | `BOOL.FOREGROUND` — PxDesigner variables are type-prefixed |
+| `setVariable START_TRANS_REQ_DATA` + `DisplayForm StartTransaction` | basket mirrored to `LIST.ITEM` / `STR.SUBTOTAL` / `STR.TAX` / `STR.AMOUNTOK` |
+| `notify IS_TRANS_STARTED=1` | `PAYMENTSTATUS` = `face`/`palm`/`card`, fired by the form's own tender buttons |
+| `notify IS_TRANS_STARTED=2` then `getVariable TRANS_RESULT` | register polls `STR.TRANSACTION_RESULT`, which winkpos writes |
+
+Two things to know about PXRRS itself, both learned the hard way:
+
+- **The `replyURL` must be `https://`.** Notifications are not delivered to a
+  plain-http callback, so the notify listener serves TLS using
+  `certs/pxrrs-notify-server.p12` (the PAX *server* identity, distinct from the
+  client cert). Disable with `NotifyUseTls: false` in settings.json.
+- **`setVariable` rejects an empty value** with "invalid format", so a mailbox
+  cannot be cleared. The result poll snapshots the variable and treats only a
+  change as the current sale's result.
+
+Biometric tenders are the one case that involves both links: WinkPay is a
+separate Android app, so the register launches it over the WebSocket *and* tells
+PxRetailer to drop the foreground (`BOOL.FOREGROUND=false`), in that order —
+backgrounding first flashes the Android home screen.
+
 ## USB link via JPxSerialServer (PCL mode)
 
 For a USB-tethered PAX terminal the register can talk through PAX's
