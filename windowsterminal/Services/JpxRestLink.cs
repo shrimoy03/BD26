@@ -59,6 +59,11 @@ public sealed class JpxRestLink : ITerminalLink
     private WebApplication? _notifyServer;
     private volatile bool _connected;
     private volatile bool _subscribed;
+    private string? _lastUptime;
+    private int _cyclesSinceSubscribe;
+
+    /// <summary>Poll cycles (5s each) between re-claiming the notify callback.</summary>
+    private const int ResubscribeCycles = 12;
 
     public JpxRestLink(LinkConfig config)
     {
@@ -256,15 +261,24 @@ public sealed class JpxRestLink : ITerminalLink
             if (alive && !_subscribed)
             {
                 var foregroundOk = await SetForegroundAsync(false);
-                var subscribeOk =
-                    await PostAsync($"/subscribe?replyURL={Uri.EscapeDataString(_notifyUrl)}", null);
+                _subscribed = await SubscribeAsync();
                 // Subscribing is what actually matters; a package that does not
                 // define the foreground flag should not fail the whole link.
-                _subscribed = subscribeOk;
                 if (!foregroundOk)
                 {
                     Console.WriteLine($"[JpxRestLink] note: {VarForeground} not settable on this package");
                 }
+            }
+            else if (alive && ++_cyclesSinceSubscribe >= ResubscribeCycles)
+            {
+                // Nothing reports that our callback was taken over — another
+                // client on this machine subscribing with the same identity
+                // simply replaces it, and we would keep reporting connected
+                // while receiving nothing. Re-claiming it is cheap and
+                // idempotent, so do it periodically rather than trusting the
+                // original subscribe to hold.
+                _cyclesSinceSubscribe = 0;
+                await SubscribeAsync();
             }
 
             var connected = alive && _subscribed;
@@ -407,17 +421,58 @@ public sealed class JpxRestLink : ITerminalLink
         "/setVariable",
         $$"""{"variables":[{"name":"{{VarForeground}}","value":"{{(foreground ? "true" : "false")}}"}]}""");
 
+    private Task<bool> SubscribeAsync()
+    {
+        _cyclesSinceSubscribe = 0;
+        return PostAsync($"/subscribe?replyURL={Uri.EscapeDataString(_notifyUrl)}", null);
+    }
+
     private async Task<bool> ProbeAsync()
     {
         try
         {
             // PXRRS methods are POST-only; GET gets an empty reply.
             var response = await _http.PostAsync($"{_baseUrl}/getPackageList", null);
-            return response.IsSuccessStatusCode;
+            if (!response.IsSuccessStatusCode) return false;
+            NoteTerminalUptime(await response.Content.ReadAsStringAsync());
+            return true;
         }
         catch (Exception)
         {
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Every PXRRS reply carries the terminal's boot timestamp. A change means
+    /// it restarted and dropped our subscription — which the 5s liveness poll
+    /// can easily miss entirely — so force a fresh subscribe instead of sitting
+    /// there "connected" with a dead callback.
+    /// </summary>
+    private void NoteTerminalUptime(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return;
+            if (!doc.RootElement.TryGetProperty("terminalUptime", out var info)) return;
+            if (!info.TryGetProperty("uptime", out var value)) return;
+
+            var uptime = value.GetString();
+            if (string.IsNullOrEmpty(uptime)) return;
+
+            if (_lastUptime is not null && _lastUptime != uptime)
+            {
+                Console.WriteLine(
+                    $"[JpxRestLink] terminal restarted ({_lastUptime} -> {uptime}) — re-subscribing");
+                _subscribed = false;
+            }
+
+            _lastUptime = uptime;
+        }
+        catch (JsonException)
+        {
+            // Not the shape we expected; liveness is unaffected.
         }
     }
 
