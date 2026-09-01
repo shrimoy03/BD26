@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -431,16 +432,22 @@ public sealed class JpxRestLink : ITerminalLink
             : stockMode && message.Method == "CARD" ? "InsertTapScreen"
             : _startForm;
 
-        var batch = JsonSerializer.Serialize(new object[]
+        // The request mailbox only exists in PAX's custom package. Writing it in
+        // stock mode fails every send with "one or more variables could not be
+        // set" — and since a batch is only OK when every command is, that made
+        // an otherwise successful DisplayForm look like a failure.
+        var commands = new List<object>();
+        if (!stockMode)
         {
-            new
+            commands.Add(new
             {
                 commandName = "SetVariable",
                 variables = new[] { new { name = VarRequest, value = PosJson.Serialize(message) } },
-            },
-            new { commandName = "DisplayForm", formName = form },
-        });
-        return await PostAsync("/sendBatchCmd", batch);
+            });
+        }
+
+        commands.Add(new { commandName = "DisplayForm", formName = form });
+        return await PostAsync("/sendBatchCmd", JsonSerializer.Serialize(commands));
     }
 
     /// <summary>
