@@ -47,6 +47,9 @@ class PxrrsTransport(
     private val baseUrl: String,
     private val notifyPort: Int = DEFAULT_NOTIFY_PORT,
     private val context: Context? = null,
+    /** Form the tender button navigates to; blank disables the watcher. */
+    private val triggerForm: String = "",
+    private val triggerMethod: String = "FACE",
 ) : PosLinkTransport {
 
     private val http = buildClient(baseUrl, context)
@@ -62,6 +65,50 @@ class PxrrsTransport(
         running = true
         Thread(::notifyServerLoop, "PxrrsNotifyServer").apply { isDaemon = true }.start()
         Thread(::maintainLinkLoop, "PxrrsLink").apply { isDaemon = true }.start()
+        if (triggerForm.isNotBlank()) {
+            Thread(::watchTriggerFormLoop, "PxrrsTrigger").apply { isDaemon = true }.start()
+        }
+    }
+
+    /**
+     * Stand-in for the diagram's `notify IS_TRANS_STARTED=1`. PXRRS does not
+     * dispatch custom form events to REST subscribers — verified on an A3700,
+     * where a form button press changes no variable and delivers no callback —
+     * so watch the form the tender button navigates to instead. Fires on the
+     * transition into the form so holding there does not restart the sale.
+     */
+    private fun watchTriggerFormLoop() {
+        var lastScreen: String? = null
+        while (running) {
+            try { Thread.sleep(TRIGGER_POLL_MS) } catch (_: InterruptedException) { return }
+            if (!connected) continue
+
+            val screen = getVariable(VAR_NEXT_SCREEN) ?: continue
+            if (screen == lastScreen) continue
+
+            val previous = lastScreen
+            lastScreen = screen
+            // Skip the first reading; the terminal may already have been here.
+            if (previous == null) continue
+            if (!screen.equals(triggerForm, ignoreCase = true)) continue
+
+            val cents = readAmountCents()
+            if (cents == null) {
+                Log.w(TAG, "$triggerForm displayed but $VAR_AMOUNT is empty — ignoring")
+                continue
+            }
+
+            Log.d(TAG, "$triggerForm displayed — starting $triggerMethod capture for $cents")
+            listener?.onMessage(
+                PosMessage(
+                    type = PosMessage.TYPE_START_PAYMENT,
+                    orderId = "PXRRS-${System.currentTimeMillis()}",
+                    amountCents = cents,
+                    currency = "USD",
+                    method = triggerMethod,
+                ),
+            )
+        }
     }
 
     override fun stop() {
@@ -363,6 +410,8 @@ class PxrrsTransport(
         const val EVENT_PAYMENT_STATUS = "PAYMENTSTATUS"
         const val VAR_AMOUNT = "STR.AMOUNTOK"
         const val VAR_RESULT_STOCK = "STR.TRANSACTION_RESULT"
+        const val VAR_NEXT_SCREEN = "SYS.STR.NEXTSCREEN"
+        const val TRIGGER_POLL_MS = 1_000L
         const val FORM_THANKS = "ThankYouScreen"
         const val FORM_IDLE = "BackgroundScreen"
     }

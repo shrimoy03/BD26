@@ -50,6 +50,9 @@ public sealed class JpxRestLink : ITerminalLink
     /// TRANS_RESULT only exists in PAX's custom package.
     /// </summary>
     private const string VarResultStock = "STR.TRANSACTION_RESULT";
+
+    /// <summary>Tracks which form PxRetailer is currently showing.</summary>
+    private const string VarNextScreen = "SYS.STR.NEXTSCREEN";
     private const string VarForeground = "BOOL.FOREGROUND";
     private const string EventTransState = "IS_TRANS_STARTED";
     private const string FormStart = "StartTransaction";
@@ -63,6 +66,9 @@ public sealed class JpxRestLink : ITerminalLink
     private readonly string _startForm;
     private readonly string _notifyCertPath;
     private readonly string _notifyCertPassword;
+    private readonly string _triggerForm;
+    private readonly string _triggerMethod;
+    private string? _lastScreen;
     private readonly HttpClient _http;
     private readonly CancellationTokenSource _cts = new();
     private WebApplication? _notifyServer;
@@ -82,6 +88,8 @@ public sealed class JpxRestLink : ITerminalLink
         _startForm = string.IsNullOrWhiteSpace(config.StartForm) ? FormStart : config.StartForm;
         _notifyCertPath = config.NotifyCertPath;
         _notifyCertPassword = config.NotifyCertPassword;
+        _triggerForm = config.TriggerForm?.Trim() ?? "";
+        _triggerMethod = config.TriggerMethod;
         _http = new HttpClient(BuildHandler(config)) { Timeout = TimeSpan.FromSeconds(10) };
     }
 
@@ -219,7 +227,68 @@ public sealed class JpxRestLink : ITerminalLink
     {
         await StartNotifyServerAsync();
         _ = Task.Run(() => MaintainLinkAsync(_cts.Token));
+
+        if (_triggerForm.Length > 0)
+        {
+            _ = Task.Run(() => WatchTriggerFormAsync(_cts.Token));
+            Console.WriteLine(
+                $"[JpxRestLink] watching for form '{_triggerForm}' as a {_triggerMethod} tender");
+        }
+
         Console.WriteLine($"[JpxRestLink] driving {_baseUrl}, notify at {_notifyUrl}");
+    }
+
+    /// <summary>
+    /// Stand-in for the diagram's <c>notify IS_TRANS_STARTED=1</c>. PXRRS does
+    /// not dispatch custom form events to REST subscribers, so instead watch
+    /// the form the Face button navigates to. Fires on the transition into the
+    /// form, not while it stays there, so holding on the screen does not
+    /// restart the tender.
+    /// </summary>
+    private async Task WatchTriggerFormAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            if (!_connected) continue;
+
+            string? screen;
+            try
+            {
+                screen = await GetVariableAsync(VarNextScreen);
+            }
+            catch (Exception)
+            {
+                continue;
+            }
+
+            if (screen is null || screen == _lastScreen) continue;
+
+            var previous = _lastScreen;
+            _lastScreen = screen;
+
+            // Ignore the very first reading: we do not know whether the
+            // terminal was already sitting on the trigger form before we
+            // started watching.
+            if (previous is null) continue;
+
+            if (!screen.Equals(_triggerForm, StringComparison.OrdinalIgnoreCase)) continue;
+
+            Console.WriteLine($"[JpxRestLink] '{screen}' displayed — treating as {_triggerMethod} tender");
+            MessageReceived?.Invoke(new PosMessage
+            {
+                Type = PosMessageTypes.TenderSelected,
+                Method = _triggerMethod,
+            });
+        }
     }
 
     private async Task StartNotifyServerAsync()

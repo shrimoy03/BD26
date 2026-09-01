@@ -82,6 +82,19 @@ public sealed class PosSettings
     /// </summary>
     public string StartForm { get; set; } = DefaultStartForm;
 
+    /// <summary>
+    /// Form the customer lands on when they pick the biometric tender, used as
+    /// a pollable stand-in for the sequence diagram's IS_TRANS_STARTED notify.
+    /// PXRRS does not dispatch custom form events to REST subscribers (verified
+    /// on an A3700: a button press changes no variable and delivers no
+    /// callback), but SYS.STR.NEXTSCREEN does track the displayed form — so
+    /// point the Face button at a form and watch for it. Blank disables it.
+    /// </summary>
+    public string BiometricTriggerForm { get; set; } = "";
+
+    /// <summary>FACE or PALM — which tender <see cref="BiometricTriggerForm"/> means.</summary>
+    public string BiometricTriggerMethod { get; set; } = "FACE";
+
     /// <summary>Blank = the bundled <c>certs/pxrrs-integration-client.p12</c>.</summary>
     public string ClientCertPath { get; set; } = "";
 
@@ -175,6 +188,10 @@ public sealed class PosSettings
             StartForm: string.IsNullOrWhiteSpace(startForm) ? DefaultStartForm : startForm,
             CertPath: certPath,
             CertPassword: string.IsNullOrWhiteSpace(certPass) ? DefaultCertPassword : certPass,
+            TriggerForm: Env("POS_BIOMETRIC_TRIGGER_FORM") ?? BiometricTriggerForm,
+            TriggerMethod: string.IsNullOrWhiteSpace(BiometricTriggerMethod)
+                ? "FACE"
+                : BiometricTriggerMethod.Trim().ToUpperInvariant(),
             NotifyCertPath: Env("POS_NOTIFY_P12") ?? NotifyCertPath,
             NotifyCertPassword: string.IsNullOrWhiteSpace(NotifyCertPassword)
                 ? DefaultCertPassword
@@ -278,6 +295,8 @@ public sealed record LinkConfig(
     string StartForm,
     string CertPath,
     string CertPassword,
+    string TriggerForm,
+    string TriggerMethod,
     string NotifyCertPath,
     string NotifyCertPassword,
     int WebSocketPort,

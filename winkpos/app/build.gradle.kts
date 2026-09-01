@@ -42,6 +42,14 @@ android {
         buildConfigField("String", "POS_LINK_WS_URL", "\"${prop("POS_LINK_WS_URL")}\"")
         buildConfigField("String", "POS_LINK_PXRRS_URL", "\"${prop("POS_LINK_PXRRS_URL")}\"")
 
+        // PXRRS does not dispatch custom form events to REST subscribers, so a
+        // biometric tender is detected by the form its button navigates to.
+        buildConfigField(
+            "String",
+            "POS_BIOMETRIC_TRIGGER_FORM",
+            "\"${prop("POS_BIOMETRIC_TRIGGER_FORM")}\"",
+        )
+
         // Okta/Auth0 rewards (user_metadata.points) — optional; the dashboard
         // falls back to the static demo points when unset.
         buildConfigField("String", "OKTA_DOMAIN", "\"${prop("OKTA_DOMAIN")}\"")
