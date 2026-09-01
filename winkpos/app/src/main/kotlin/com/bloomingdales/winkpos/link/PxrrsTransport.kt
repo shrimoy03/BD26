@@ -47,9 +47,13 @@ class PxrrsTransport(
     private val baseUrl: String,
     private val notifyPort: Int = DEFAULT_NOTIFY_PORT,
     private val context: Context? = null,
-    /** Form the tender button navigates to; blank disables the watcher. */
-    private val triggerForm: String = "",
-    private val triggerMethod: String = "FACE",
+    // Mailbox variables shared with the register (windowsterminal
+    // PosSettings). Defaults are stock PxRetail names, verified to round-trip a
+    // full order JSON; repoint them at PAX's custom names once that package
+    // ships.
+    private val requestVar: String = "STR.GENERIC_1",
+    private val stateVar: String = "STR.GENERIC_2",
+    private val resultVar: String = "STR.TRANSACTION_RESULT",
 ) : PosLinkTransport {
 
     private val http = buildClient(baseUrl, context)
@@ -65,49 +69,37 @@ class PxrrsTransport(
         running = true
         Thread(::notifyServerLoop, "PxrrsNotifyServer").apply { isDaemon = true }.start()
         Thread(::maintainLinkLoop, "PxrrsLink").apply { isDaemon = true }.start()
-        if (triggerForm.isNotBlank()) {
-            Thread(::watchTriggerFormLoop, "PxrrsTrigger").apply { isDaemon = true }.start()
-        }
+        Thread(::watchMailboxLoop, "PxrrsMailbox").apply { isDaemon = true }.start()
     }
 
     /**
-     * Stand-in for the diagram's `notify IS_TRANS_STARTED=1`. PXRRS does not
-     * dispatch custom form events to REST subscribers — verified on an A3700,
-     * where a form button press changes no variable and delivers no callback —
-     * so watch the form the tender button navigates to instead. Fires on the
-     * transition into the form so holding there does not restart the sale.
+     * The diagram's `notify IS_TRANS_STARTED=1`, done by polling.
+     *
+     * PXRRS on this terminal accepts a subscription and then never posts to the
+     * replyURL — reproducible with emvDetectICCard, so it is not specific to
+     * custom form events. Every other arrow in the diagram is already
+     * get/setVariable and IS_TRANS_STARTED is really just a state flag, so the
+     * register raises it here and this loop watches for it. Same protocol, no
+     * notify.
      */
-    private fun watchTriggerFormLoop() {
-        var lastScreen: String? = null
+    private fun watchMailboxLoop() {
         while (running) {
             try { Thread.sleep(TRIGGER_POLL_MS) } catch (_: InterruptedException) { return }
             if (!connected) continue
 
-            val screen = getVariable(VAR_NEXT_SCREEN) ?: continue
-            if (screen == lastScreen) continue
+            if (getVariable(stateVar)?.trim() != STATE_ORDER_READY) continue
 
-            val previous = lastScreen
-            lastScreen = screen
-            // Skip the first reading; the terminal may already have been here.
-            if (previous == null) continue
-            if (!screen.equals(triggerForm, ignoreCase = true)) continue
-
-            val cents = readAmountCents()
-            if (cents == null) {
-                Log.w(TAG, "$triggerForm displayed but $VAR_AMOUNT is empty — ignoring")
+            val order = getVariable(requestVar)
+            val message = order?.let { PosMessage.fromJson(it) }
+            if (message == null) {
+                Log.w(TAG, "$stateVar=$STATE_ORDER_READY but $requestVar did not parse: $order")
                 continue
             }
 
-            Log.d(TAG, "$triggerForm displayed — starting $triggerMethod capture for $cents")
-            listener?.onMessage(
-                PosMessage(
-                    type = PosMessage.TYPE_START_PAYMENT,
-                    orderId = "PXRRS-${System.currentTimeMillis()}",
-                    amountCents = cents,
-                    currency = "USD",
-                    method = triggerMethod,
-                ),
-            )
+            // Claim the sale so a slow capture is not restarted next tick.
+            setVariable(stateVar, STATE_IN_PROGRESS)
+            Log.d(TAG, "order received: $order")
+            listener?.onMessage(message)
         }
     }
 
@@ -131,21 +123,18 @@ class PxrrsTransport(
     override fun send(message: PosMessage): Boolean {
         if (message.type != PosMessage.TYPE_PAYMENT_RESULT) return message.type == PosMessage.TYPE_HELLO
 
-        val json = message.toJson()
-        val customOk = setVariable(VAR_RESULT, json)
-        val stockOk = setVariable(VAR_RESULT_STOCK, json)
+        // Phase 4: publish the outcome, then raise the flag the register polls.
+        // Order matters — the flag must not go up before the result is readable.
+        val published = setVariable(resultVar, message.toJson())
+        val flagged = setVariable(stateVar, STATE_RESULT_READY)
 
-        val form = when {
-            customOk -> FORM_END
-            message.status == PosMessage.STATUS_APPROVED -> FORM_THANKS
-            else -> FORM_IDLE
-        }
+        val form = if (message.status == PosMessage.STATUS_APPROVED) FORM_THANKS else FORM_IDLE
         val shown = post("/displayForm?formName=$form", null)
 
         // Capture is done; hand the screen back to PxRetailer.
         setVariable(VAR_FOREGROUND, "true")
 
-        return (customOk || stockOk) && shown
+        return published && flagged && shown
     }
 
     private fun setVariable(name: String, value: String): Boolean = post(
@@ -399,19 +388,21 @@ class PxrrsTransport(
         // The other two belong to PAX's custom Bloomingdale's package and are
         // absent on a stock PxRetail install. TODO(PAX): confirm their prefixes.
         const val VAR_REQUEST = "START_TRANS_REQ_DATA"
-        const val VAR_RESULT = "TRANS_RESULT"
         const val VAR_FOREGROUND = "BOOL.FOREGROUND"
         const val EVENT_TRANS_STATE = "IS_TRANS_STARTED"
-        const val FORM_END = "EndTransaction"
 
         // Stock PxRetail: the tender buttons on the payment form fire
         // PAYMENTSTATUS, and the register mirrors the basket total into
         // STR.AMOUNTOK. Both exist without PAX's custom package.
         const val EVENT_PAYMENT_STATUS = "PAYMENTSTATUS"
         const val VAR_AMOUNT = "STR.AMOUNTOK"
-        const val VAR_RESULT_STOCK = "STR.TRANSACTION_RESULT"
-        const val VAR_NEXT_SCREEN = "SYS.STR.NEXTSCREEN"
         const val TRIGGER_POLL_MS = 1_000L
+
+        // Handshake states in the state mailbox. PXRRS rejects setVariable with
+        // an empty value, so idle is "0" rather than blank.
+        const val STATE_ORDER_READY = "1"
+        const val STATE_RESULT_READY = "2"
+        const val STATE_IN_PROGRESS = "3"
         const val FORM_THANKS = "ThankYouScreen"
         const val FORM_IDLE = "BackgroundScreen"
     }

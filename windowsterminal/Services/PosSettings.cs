@@ -95,6 +95,26 @@ public sealed class PosSettings
     /// <summary>FACE or PALM — which tender <see cref="BiometricTriggerForm"/> means.</summary>
     public string BiometricTriggerMethod { get; set; } = "FACE";
 
+    // ----- Mailbox variables -----
+    //
+    // The sequence diagram pushes IS_TRANS_STARTED to both parties via notify,
+    // but PXRRS on this terminal accepts a subscription and then never posts
+    // (reproducible with emvDetectICCard, no custom form involved). Every other
+    // arrow in the diagram is already get/setVariable, and the event is really
+    // just a state flag — so the whole flow runs by polling these three, with
+    // no notify at all. Defaults are stock PxRetail variables, verified to
+    // round-trip a full order JSON; point them at PAX's custom names once that
+    // package is installed.
+
+    /// <summary>Order details, register -> WinkPay (diagram: START_TRANS_REQ_DATA).</summary>
+    public string RequestVariable { get; set; } = "STR.GENERIC_1";
+
+    /// <summary>Handshake flag (diagram: IS_TRANS_STARTED). 0 idle, 1 order ready, 2 result ready.</summary>
+    public string StateVariable { get; set; } = "STR.GENERIC_2";
+
+    /// <summary>Biometric outcome, WinkPay -> register (diagram: TRANS_RESULT).</summary>
+    public string ResultVariable { get; set; } = "STR.TRANSACTION_RESULT";
+
     /// <summary>Blank = the bundled <c>certs/pxrrs-integration-client.p12</c>.</summary>
     public string ClientCertPath { get; set; } = "";
 
@@ -188,6 +208,9 @@ public sealed class PosSettings
             StartForm: string.IsNullOrWhiteSpace(startForm) ? DefaultStartForm : startForm,
             CertPath: certPath,
             CertPassword: string.IsNullOrWhiteSpace(certPass) ? DefaultCertPassword : certPass,
+            RequestVariable: RequestVariable,
+            StateVariable: StateVariable,
+            ResultVariable: ResultVariable,
             TriggerForm: Env("POS_BIOMETRIC_TRIGGER_FORM") ?? BiometricTriggerForm,
             TriggerMethod: string.IsNullOrWhiteSpace(BiometricTriggerMethod)
                 ? "FACE"
@@ -295,6 +318,9 @@ public sealed record LinkConfig(
     string StartForm,
     string CertPath,
     string CertPassword,
+    string RequestVariable,
+    string StateVariable,
+    string ResultVariable,
     string TriggerForm,
     string TriggerMethod,
     string NotifyCertPath,

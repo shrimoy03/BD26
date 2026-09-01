@@ -45,11 +45,12 @@ public sealed class JpxRestLink : ITerminalLink
     private const string VarRequest = "START_TRANS_REQ_DATA";
     private const string VarResult = "TRANS_RESULT";
 
-    /// <summary>
-    /// Stock-package mailbox winkpos writes its biometric outcome to, since
-    /// TRANS_RESULT only exists in PAX's custom package.
-    /// </summary>
-    private const string VarResultStock = "STR.TRANSACTION_RESULT";
+    // Handshake states carried in the state mailbox — the pollable equivalent
+    // of the diagram's IS_TRANS_STARTED notify. PXRRS rejects setVariable with
+    // an empty value, so idle is "0" rather than blank.
+    private const string StateIdle = "0";
+    private const string StateOrderReady = "1";
+    private const string StateResultReady = "2";
 
     /// <summary>Tracks which form PxRetailer is currently showing.</summary>
     private const string VarNextScreen = "SYS.STR.NEXTSCREEN";
@@ -68,6 +69,9 @@ public sealed class JpxRestLink : ITerminalLink
     private readonly string _notifyCertPassword;
     private readonly string _triggerForm;
     private readonly string _triggerMethod;
+    private readonly string _requestVar;
+    private readonly string _stateVar;
+    private readonly string _resultVar;
     private string? _lastScreen;
     private readonly HttpClient _http;
     private readonly CancellationTokenSource _cts = new();
@@ -90,6 +94,9 @@ public sealed class JpxRestLink : ITerminalLink
         _notifyCertPassword = config.NotifyCertPassword;
         _triggerForm = config.TriggerForm?.Trim() ?? "";
         _triggerMethod = config.TriggerMethod;
+        _requestVar = config.RequestVariable;
+        _stateVar = config.StateVariable;
+        _resultVar = config.ResultVariable;
         _http = new HttpClient(BuildHandler(config)) { Timeout = TimeSpan.FromSeconds(10) };
     }
 
@@ -474,6 +481,17 @@ public sealed class JpxRestLink : ITerminalLink
         // the customer never sees WinkPay come up.
         if (message.Type == PosMessageTypes.StartPayment && message.Method is "FACE" or "PALM")
         {
+            // Phase 2 + 3 of the sequence diagram, as mailboxes: publish the
+            // order, then raise the handshake flag WinkPay is polling. Order
+            // matters — the flag must not go up before the details are readable.
+            var published = await SetVariableAsync(_requestVar, PosJson.Serialize(message));
+            var flagged = await SetVariableAsync(_stateVar, StateOrderReady);
+            if (!published || !flagged)
+            {
+                Console.WriteLine($"[JpxRestLink] could not hand the sale to WinkPay via {_requestVar}/{_stateVar}");
+                return false;
+            }
+
             StartResultPolling();
             return await SetForegroundAsync(false);
         }
@@ -604,20 +622,6 @@ public sealed class JpxRestLink : ITerminalLink
     /// </summary>
     private async Task PollForResultAsync(CancellationToken ct)
     {
-        // PXRRS rejects setVariable with an empty value ("invalid format"), so
-        // the mailbox cannot be cleared. Snapshot it instead and treat only a
-        // change as this sale's result. Consecutive sales differ by orderId, so
-        // an identical payload twice in a row is not a realistic case.
-        string? baseline;
-        try
-        {
-            baseline = await GetVariableAsync(VarResultStock);
-        }
-        catch (Exception)
-        {
-            baseline = null;
-        }
-
         while (!ct.IsCancellationRequested)
         {
             try
@@ -629,26 +633,38 @@ public sealed class JpxRestLink : ITerminalLink
                 return;
             }
 
-            string? json;
+            string? state;
             try
             {
-                json = await GetVariableAsync(VarResultStock);
+                state = await GetVariableAsync(_stateVar);
             }
             catch (Exception)
             {
                 continue; // transient; keep polling until cancelled
             }
 
-            if (string.IsNullOrWhiteSpace(json) || json == baseline) continue;
+            if (state?.Trim() != StateResultReady) continue;
 
-            var message = PosJson.Deserialize(json);
-            if (message is null)
+            string? json = null;
+            try
             {
-                baseline = json; // not ours; do not re-read it every second
+                json = await GetVariableAsync(_resultVar);
+            }
+            catch (Exception)
+            {
+                // Flag is up but the payload did not read; try again next tick.
                 continue;
             }
 
-            Console.WriteLine($"[JpxRestLink] biometric result via {VarResultStock}: {json}");
+            var message = json is null ? null : PosJson.Deserialize(json);
+            if (message is null) continue;
+
+            Console.WriteLine($"[JpxRestLink] result via {_resultVar}: {json}");
+
+            // Drop the flag so the next sale starts from a clean handshake.
+            // PXRRS rejects an empty value, hence "0" rather than "".
+            await SetVariableAsync(_stateVar, StateIdle);
+
             MessageReceived?.Invoke(message);
             return;
         }

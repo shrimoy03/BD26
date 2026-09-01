@@ -82,7 +82,6 @@ object PosLink {
             "pxrrs" -> PxrrsTransport(
                 BuildConfig.POS_LINK_PXRRS_URL.ifBlank { "https://127.0.0.1:9090" },
                 context = context.applicationContext,
-                triggerForm = BuildConfig.POS_BIOMETRIC_TRIGGER_FORM,
             )
             "pcl" -> PclSerialTransport(PaxNeptuneSerialIo(context.applicationContext))
             else -> null
