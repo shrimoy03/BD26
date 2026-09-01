@@ -150,23 +150,25 @@ class PxrrsTransport(
     private fun maintainLinkLoop() {
         while (running) {
             val alive = probe()
+
             if (alive && !subscribed) {
-                subscribed = post(
-                    "/setVariable",
-                    JSONObject().put(
-                        "variables",
-                        JSONArray().put(JSONObject().put("name", VAR_FOREGROUND).put("value", "false")),
-                    ).toString(),
-                ) && post("/subscribe?replyURL=http://127.0.0.1:$notifyPort/notify", null)
+                // Both are best-effort. The sale runs through the variable
+                // mailboxes, so neither the foreground flag (absent on some
+                // packages) nor the notify subscription (PXRRS never posts to
+                // it on this terminal) may gate the link — treating them as
+                // required would leave the app permanently "disconnected" and
+                // the mailbox loop would never run.
+                setVariable(VAR_FOREGROUND, "false")
+                post("/subscribe?replyURL=http://127.0.0.1:$notifyPort/notify", null)
+                subscribed = true
             }
 
-            val nowConnected = alive && subscribed
-            if (nowConnected != connected) {
-                connected = nowConnected
-                if (nowConnected) {
+            if (alive != connected) {
+                connected = alive
+                if (alive) {
                     listener?.onConnected()
                 } else {
-                    subscribed = false
+                    subscribed = false // re-run the init handshake on reconnect
                     listener?.onDisconnected()
                 }
             }
