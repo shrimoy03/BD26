@@ -65,6 +65,18 @@ public sealed class PosSettings
     public string NotifyHost { get; set; } = "";
 
     /// <summary>
+    /// Serve the notify callback over HTTPS and advertise it as https://.
+    /// PAX's own RetailDemoApplication subscribes with an https replyURL, and
+    /// PXRRS appears not to deliver to a plain-http one.
+    /// </summary>
+    public bool NotifyUseTls { get; set; } = true;
+
+    /// <summary>Blank = the bundled <c>certs/pxrrs-notify-server.p12</c>.</summary>
+    public string NotifyCertPath { get; set; } = "";
+
+    public string NotifyCertPassword { get; set; } = DefaultCertPassword;
+
+    /// <summary>
     /// PAX's custom Bloomingdale's form, or <see cref="StockStartForm"/> until
     /// that package is installed on the device.
     /// </summary>
@@ -163,6 +175,10 @@ public sealed class PosSettings
             StartForm: string.IsNullOrWhiteSpace(startForm) ? DefaultStartForm : startForm,
             CertPath: certPath,
             CertPassword: string.IsNullOrWhiteSpace(certPass) ? DefaultCertPassword : certPass,
+            NotifyCertPath: Env("POS_NOTIFY_P12") ?? NotifyCertPath,
+            NotifyCertPassword: string.IsNullOrWhiteSpace(NotifyCertPassword)
+                ? DefaultCertPassword
+                : NotifyCertPassword,
             WebSocketPort: WebSocketPort,
             PclHost: pclHost,
             PclPort: pclPort,
@@ -187,7 +203,8 @@ public sealed class PosSettings
         var host = string.IsNullOrWhiteSpace(NotifyHost)
             ? LocalAddressFor(TerminalHost, TerminalPort) ?? "127.0.0.1"
             : NotifyHost.Trim();
-        return $"http://{host}:{NotifyPort}/notify";
+        var scheme = NotifyUseTls ? "https" : "http";
+        return $"{scheme}://{host}:{NotifyPort}/notify";
     }
 
     // ================= network helpers =================
@@ -261,6 +278,8 @@ public sealed record LinkConfig(
     string StartForm,
     string CertPath,
     string CertPassword,
+    string NotifyCertPath,
+    string NotifyCertPassword,
     int WebSocketPort,
     string PclHost,
     int PclPort,

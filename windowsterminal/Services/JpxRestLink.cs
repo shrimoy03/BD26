@@ -54,6 +54,8 @@ public sealed class JpxRestLink : ITerminalLink
     private readonly string _baseUrl;
     private readonly string _notifyUrl;
     private readonly string _startForm;
+    private readonly string _notifyCertPath;
+    private readonly string _notifyCertPassword;
     private readonly HttpClient _http;
     private readonly CancellationTokenSource _cts = new();
     private WebApplication? _notifyServer;
@@ -70,12 +72,39 @@ public sealed class JpxRestLink : ITerminalLink
         _baseUrl = config.BaseUrl.TrimEnd('/');
         _notifyUrl = config.NotifyUrl;
         _startForm = string.IsNullOrWhiteSpace(config.StartForm) ? FormStart : config.StartForm;
+        _notifyCertPath = config.NotifyCertPath;
+        _notifyCertPassword = config.NotifyCertPassword;
         _http = new HttpClient(BuildHandler(config)) { Timeout = TimeSpan.FromSeconds(10) };
     }
 
     /// <summary>Bundled fallback when no cert path is configured.</summary>
     public static string DefaultCertPath =>
         System.IO.Path.Combine(AppContext.BaseDirectory, "certs", "pxrrs-integration-client.p12");
+
+    /// <summary>Server identity for our own https notify listener.</summary>
+    public static string DefaultNotifyCertPath =>
+        System.IO.Path.Combine(AppContext.BaseDirectory, "certs", "pxrrs-notify-server.p12");
+
+    private System.Security.Cryptography.X509Certificates.X509Certificate2? LoadNotifyCertificate()
+    {
+        var path = string.IsNullOrWhiteSpace(_notifyCertPath) ? DefaultNotifyCertPath : _notifyCertPath;
+        if (!System.IO.File.Exists(path))
+        {
+            Console.WriteLine($"[JpxRestLink] notify server certificate not found at {path}");
+            return null;
+        }
+
+        try
+        {
+            return System.Security.Cryptography.X509Certificates.X509CertificateLoader
+                .LoadPkcs12FromFile(path, _notifyCertPassword);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"[JpxRestLink] could not load notify certificate {path}: {e.Message}");
+            return null;
+        }
+    }
 
     public static string ResolveCertPath(LinkConfig config) =>
         string.IsNullOrWhiteSpace(config.CertPath) ? DefaultCertPath : config.CertPath.Trim();
@@ -190,7 +219,21 @@ public sealed class JpxRestLink : ITerminalLink
         var uri = new Uri(_notifyUrl);
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
-        builder.WebHost.UseUrls($"http://0.0.0.0:{uri.Port}");
+
+        // PXRRS will not post results to a plain-http replyURL — PAX's own
+        // RetailDemoApplication subscribes with an https one. Serve TLS with
+        // the PAX server identity when the advertised URL says https.
+        var useTls = uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
+        builder.WebHost.ConfigureKestrel(options =>
+        {
+            options.ListenAnyIP(uri.Port, listen =>
+            {
+                if (!useTls) return;
+                var cert = LoadNotifyCertificate();
+                if (cert is not null) listen.UseHttps(cert);
+                else Console.WriteLine("[JpxRestLink] WARNING: https notify requested but no server certificate — falling back to http");
+            });
+        });
 
         _notifyServer = builder.Build();
         _notifyServer.MapPost(uri.AbsolutePath, async context =>
