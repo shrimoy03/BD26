@@ -43,6 +43,12 @@ public sealed class JpxRestLink : ITerminalLink
     // SendAsync. TODO(PAX): confirm their prefixes when that package ships.
     private const string VarRequest = "START_TRANS_REQ_DATA";
     private const string VarResult = "TRANS_RESULT";
+
+    /// <summary>
+    /// Stock-package mailbox winkpos writes its biometric outcome to, since
+    /// TRANS_RESULT only exists in PAX's custom package.
+    /// </summary>
+    private const string VarResultStock = "STR.TRANSACTION_RESULT";
     private const string VarForeground = "BOOL.FOREGROUND";
     private const string EventTransState = "IS_TRANS_STARTED";
     private const string FormStart = "StartTransaction";
@@ -63,6 +69,7 @@ public sealed class JpxRestLink : ITerminalLink
     private volatile bool _subscribed;
     private string? _lastUptime;
     private int _cyclesSinceSubscribe;
+    private CancellationTokenSource? _resultPoll;
 
     /// <summary>Poll cycles (5s each) between re-claiming the notify callback.</summary>
     private const int ResubscribeCycles = 12;
@@ -258,6 +265,7 @@ public sealed class JpxRestLink : ITerminalLink
             // IS_TRANS_STARTED=2 -> the terminal published TRANS_RESULT.
             if (name == EventTransState && value == "2")
             {
+                StopResultPolling(); // the notify beat the mailbox poll to it
                 _ = Task.Run(FetchResultAsync);
             }
 
@@ -371,6 +379,7 @@ public sealed class JpxRestLink : ITerminalLink
         // the customer never sees WinkPay come up.
         if (message.Type == PosMessageTypes.StartPayment && message.Method is "FACE" or "PALM")
         {
+            StartResultPolling();
             return await SetForegroundAsync(false);
         }
 
@@ -383,6 +392,7 @@ public sealed class JpxRestLink : ITerminalLink
         // before displaying the cancel/idle form below.
         if (message.Type == PosMessageTypes.CancelPayment)
         {
+            StopResultPolling();
             await SetForegroundAsync(true);
         }
 
@@ -463,6 +473,85 @@ public sealed class JpxRestLink : ITerminalLink
     private Task<bool> SetForegroundAsync(bool foreground) => PostAsync(
         "/setVariable",
         $$"""{"variables":[{"name":"{{VarForeground}}","value":"{{(foreground ? "true" : "false")}}"}]}""");
+
+    private Task<bool> SetVariableAsync(string name, string value) => PostAsync(
+        "/setVariable",
+        JsonSerializer.Serialize(new { variables = new[] { new { name, value } } }));
+
+    private void StartResultPolling()
+    {
+        StopResultPolling();
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+        _resultPoll = cts;
+        _ = Task.Run(() => PollForResultAsync(cts.Token));
+    }
+
+    private void StopResultPolling()
+    {
+        var poll = Interlocked.Exchange(ref _resultPoll, null);
+        if (poll is null) return;
+        poll.Cancel();
+        poll.Dispose();
+    }
+
+    /// <summary>
+    /// winkpos publishes the biometric outcome into a form variable. The
+    /// sequence diagram has PXRRS notify us instead, but no notification has
+    /// ever been observed arriving at this PC, and without a result the sale
+    /// sits on "awaiting" forever — so read the mailbox directly while a
+    /// biometric tender is in flight.
+    /// </summary>
+    private async Task PollForResultAsync(CancellationToken ct)
+    {
+        // PXRRS rejects setVariable with an empty value ("invalid format"), so
+        // the mailbox cannot be cleared. Snapshot it instead and treat only a
+        // change as this sale's result. Consecutive sales differ by orderId, so
+        // an identical payload twice in a row is not a realistic case.
+        string? baseline;
+        try
+        {
+            baseline = await GetVariableAsync(VarResultStock);
+        }
+        catch (Exception)
+        {
+            baseline = null;
+        }
+
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            string? json;
+            try
+            {
+                json = await GetVariableAsync(VarResultStock);
+            }
+            catch (Exception)
+            {
+                continue; // transient; keep polling until cancelled
+            }
+
+            if (string.IsNullOrWhiteSpace(json) || json == baseline) continue;
+
+            var message = PosJson.Deserialize(json);
+            if (message is null)
+            {
+                baseline = json; // not ours; do not re-read it every second
+                continue;
+            }
+
+            Console.WriteLine($"[JpxRestLink] biometric result via {VarResultStock}: {json}");
+            MessageReceived?.Invoke(message);
+            return;
+        }
+    }
 
     private Task<bool> SubscribeAsync()
     {
@@ -598,6 +687,7 @@ public sealed class JpxRestLink : ITerminalLink
 
     public async ValueTask DisposeAsync()
     {
+        StopResultPolling();
         _cts.Cancel();
         if (_notifyServer is not null)
         {

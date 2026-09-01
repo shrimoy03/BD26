@@ -70,22 +70,44 @@ class PxrrsTransport(
         try { notifySocket?.close() } catch (_: Exception) { }
     }
 
+    /**
+     * Phase 4 of the sequence diagram: publish the biometric result and close
+     * the sale out on the terminal.
+     *
+     * The diagram writes TRANS_RESULT and displays EndTransaction, both of
+     * which belong to PAX's custom package. On a stock PxRetail install neither
+     * exists, so the result also goes to STR.TRANSACTION_RESULT (which the
+     * register polls) and the screen falls back to the stock receipt/idle
+     * forms. The two writes are separate calls on purpose — batched, the
+     * missing variable would fail the whole command.
+     */
     override fun send(message: PosMessage): Boolean {
         if (message.type != PosMessage.TYPE_PAYMENT_RESULT) return message.type == PosMessage.TYPE_HELLO
-        val batch = JSONArray()
-            .put(
-                JSONObject()
-                    .put("commandName", "SetVariable")
-                    .put(
-                        "variables",
-                        JSONArray().put(
-                            JSONObject().put("name", VAR_RESULT).put("value", message.toJson()),
-                        ),
-                    ),
-            )
-            .put(JSONObject().put("commandName", "DisplayForm").put("formName", FORM_END))
-        return post("/sendBatchCmd", batch.toString())
+
+        val json = message.toJson()
+        val customOk = setVariable(VAR_RESULT, json)
+        val stockOk = setVariable(VAR_RESULT_STOCK, json)
+
+        val form = when {
+            customOk -> FORM_END
+            message.status == PosMessage.STATUS_APPROVED -> FORM_THANKS
+            else -> FORM_IDLE
+        }
+        val shown = post("/displayForm?formName=$form", null)
+
+        // Capture is done; hand the screen back to PxRetailer.
+        setVariable(VAR_FOREGROUND, "true")
+
+        return (customOk || stockOk) && shown
     }
+
+    private fun setVariable(name: String, value: String): Boolean = post(
+        "/setVariable",
+        JSONObject().put(
+            "variables",
+            JSONArray().put(JSONObject().put("name", name).put("value", value)),
+        ).toString(),
+    )
 
     // ----- Link maintenance (Phase 1 of the sequence diagram) -----
 
@@ -340,5 +362,8 @@ class PxrrsTransport(
         // STR.AMOUNTOK. Both exist without PAX's custom package.
         const val EVENT_PAYMENT_STATUS = "PAYMENTSTATUS"
         const val VAR_AMOUNT = "STR.AMOUNTOK"
+        const val VAR_RESULT_STOCK = "STR.TRANSACTION_RESULT"
+        const val FORM_THANKS = "ThankYouScreen"
+        const val FORM_IDLE = "BackgroundScreen"
     }
 }
