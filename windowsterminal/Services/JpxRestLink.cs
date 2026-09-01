@@ -17,7 +17,7 @@ namespace MerchantTerminal.Services;
 /// the terminal through the PxRetailer REST service, using form variables as
 /// mailboxes.
 ///
-///   startup  -> POST /setVariable FOREGROUND=false; POST /subscribe
+///   startup  -> POST /setVariable BOOL.FOREGROUND=false; POST /subscribe
 ///   sale     -> POST /sendBatchCmd [SetVariable START_TRANS_REQ_DATA=json,
 ///               DisplayForm StartTransaction]
 ///   result   <- notify IS_TRANS_STARTED=2 -> GET /getVariable TRANS_RESULT
@@ -32,11 +32,18 @@ namespace MerchantTerminal.Services;
 /// </summary>
 public sealed class JpxRestLink : ITerminalLink
 {
-    // Names from PAX's sequence diagram. TODO(PAX): confirm exact casing in
-    // the form package they ship.
+    // Names from PAX's sequence diagram. PxDesigner variables are type-prefixed
+    // (BOOL./STR./INT./LIST.), so the diagram's bare "FOREGROUND" is really
+    // BOOL.FOREGROUND — verified against a live A3700 (PxRetailer 2.01.16):
+    // getVariable BOOL.FOREGROUND returns "true" and setVariable succeeds,
+    // while the unprefixed name is rejected as unknown.
+    //
+    // The remaining three belong to PAX's custom Bloomingdale's package and do
+    // not exist on a stock PxRetail install; see the stock-form fallback in
+    // SendAsync. TODO(PAX): confirm their prefixes when that package ships.
     private const string VarRequest = "START_TRANS_REQ_DATA";
     private const string VarResult = "TRANS_RESULT";
-    private const string VarForeground = "FOREGROUND";
+    private const string VarForeground = "BOOL.FOREGROUND";
     private const string EventTransState = "IS_TRANS_STARTED";
     private const string FormStart = "StartTransaction";
 
@@ -425,12 +432,36 @@ public sealed class JpxRestLink : ITerminalLink
         return null;
     }
 
+    /// <summary>
+    /// Most endpoints answer with a single result object, but /sendBatchCmd
+    /// answers with one per command in the batch. TryGetProperty throws rather
+    /// than returning false on a non-object root, so the array case has to be
+    /// handled explicitly — otherwise every batch send looks like a transport
+    /// failure and the caller retries forever.
+    /// </summary>
     private static bool IsResultOk(string body)
     {
         try
         {
             using var doc = JsonDocument.Parse(body);
-            return doc.RootElement.TryGetProperty("resultCode", out var rc)
+            var root = doc.RootElement;
+
+            if (root.ValueKind == JsonValueKind.Array)
+            {
+                var sawResult = false;
+                foreach (var item in root.EnumerateArray())
+                {
+                    if (item.ValueKind != JsonValueKind.Object) continue;
+                    if (!item.TryGetProperty("resultCode", out var code)) continue;
+                    sawResult = true;
+                    if (code.ToString() != "0") return false;
+                }
+
+                return sawResult;
+            }
+
+            return root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("resultCode", out var rc)
                 && rc.ToString() == "0";
         }
         catch (JsonException)

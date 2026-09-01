@@ -212,11 +212,16 @@ class PxrrsTransport(
         const val POLL_MS = 5_000L
         val JSON = "application/json; charset=utf-8".toMediaType()
 
-        // Names from PAX's sequence diagram. TODO(PAX): confirm exact casing
-        // in the form package they ship.
+        // PxDesigner variables are type-prefixed (BOOL./STR./INT./LIST.), so
+        // the diagram's bare "FOREGROUND" is really BOOL.FOREGROUND — verified
+        // against a live A3700 (PxRetailer 2.01.16); the unprefixed name is
+        // rejected as unknown.
+        //
+        // The other two belong to PAX's custom Bloomingdale's package and are
+        // absent on a stock PxRetail install. TODO(PAX): confirm their prefixes.
         const val VAR_REQUEST = "START_TRANS_REQ_DATA"
         const val VAR_RESULT = "TRANS_RESULT"
-        const val VAR_FOREGROUND = "FOREGROUND"
+        const val VAR_FOREGROUND = "BOOL.FOREGROUND"
         const val EVENT_TRANS_STATE = "IS_TRANS_STARTED"
         const val FORM_END = "EndTransaction"
     }
