@@ -243,13 +243,38 @@ public sealed class JpxRestLink : ITerminalLink
         });
 
         _notifyServer = builder.Build();
-        _notifyServer.MapPost(uri.AbsolutePath, async context =>
+
+        // Terminal middleware rather than MapPost(path): accept any method and
+        // any path. PXRRS's exact callback shape is not documented, and a
+        // mismatch on the verb or path would otherwise be rejected with no
+        // trace at all — which is indistinguishable from nothing arriving.
+        // Everything inbound is logged so the real shape is visible.
+        _notifyServer.Run(async context =>
         {
-            using var reader = new System.IO.StreamReader(context.Request.Body);
+            var request = context.Request;
+            using var reader = new System.IO.StreamReader(request.Body);
             var body = await reader.ReadToEndAsync();
             context.Response.StatusCode = StatusCodes.Status200OK;
-            HandleNotify(body);
+
+            Console.WriteLine(
+                $"[JpxRestLink] inbound {request.Method} {request.Path}{request.QueryString} " +
+                $"body={(string.IsNullOrWhiteSpace(body) ? "<empty>" : body)}");
+
+            if (!string.IsNullOrWhiteSpace(body))
+            {
+                HandleNotify(body);
+                return;
+            }
+
+            // Some senders put the event in the query string instead of a body.
+            var name = request.Query["name"].ToString();
+            var value = request.Query["value"].ToString();
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                HandleNotify(JsonSerializer.Serialize(new { name, value }));
+            }
         });
+
         await _notifyServer.StartAsync();
     }
 
