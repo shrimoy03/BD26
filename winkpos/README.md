@@ -53,6 +53,13 @@ terminal and takes the biometric leg of the sale. Enable it in
 POS_LINK_MODE=pxrrs
 # optional; defaults to https://127.0.0.1:9090
 POS_LINK_PXRRS_URL=https://127.0.0.1:9090
+
+# Mailbox variables. Optional — these are the defaults, and they must match the
+# register's settings.json. A PxDesigner Text variable FOO is addressed over
+# REST as STR.FOO (Boolean -> BOOL.), so keep the prefix.
+POS_REQUEST_VAR=STR.GENERIC_1
+POS_STATE_VAR=STR.GENERIC_2
+POS_RESULT_VAR=STR.TRANSACTION_RESULT
 ```
 
 PXRRS serves HTTPS and requires a client certificate even on loopback, so drop
@@ -63,10 +70,20 @@ the keystore at `app/src/main/assets/pxrrs-integration-client.p12` (password
 Two trigger paths are handled, so the app works before and after PAX ships the
 custom form package:
 
-| Terminal package | Trigger | Amount source |
-|---|---|---|
-| Stock `PxRetail` | `PAYMENTSTATUS` = `face`/`palm` fired by the form's tender button | `STR.AMOUNTOK`, mirrored there by the register |
-| PAX custom | `IS_TRANS_STARTED=1` | `START_TRANS_REQ_DATA` (JSON order details) |
+The register drives it: it watches for the tender button, publishes the order
+into the request mailbox and raises the state flag; this app picks that up,
+captures the biometric, writes the result back and raises the flag again.
+
+| State flag | Meaning |
+|---|---|
+| `1` | register published the order; this app should capture |
+| `3` | capture claimed and in progress |
+| `2` | result published; the register settles the sale |
+
+`FireEvent` is deliberately not relied on: PXRRS accepts a notify subscription
+and then never posts to the replyURL (reproducible with `emvDetectICCard`, so
+it is not specific to custom form events). The tender button therefore carries a
+PxDesigner **SetVariable** action instead, which the register polls.
 
 The register backgrounds PxRetailer (`BOOL.FOREGROUND=false`) when it sees the
 biometric tender, which is what lets this app take the screen. Launching an

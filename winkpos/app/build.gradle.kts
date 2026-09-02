@@ -42,6 +42,15 @@ android {
         buildConfigField("String", "POS_LINK_WS_URL", "\"${prop("POS_LINK_WS_URL")}\"")
         buildConfigField("String", "POS_LINK_PXRRS_URL", "\"${prop("POS_LINK_PXRRS_URL")}\"")
 
+        // Mailbox variables shared with the register (its settings.json uses the
+        // same three). Blank falls back to the stock PxRetail names; repoint all
+        // six together if you create custom variables in PxDesigner. Remember
+        // the REST name is the PxDesigner name with a type prefix — a Text
+        // variable FOO is addressed as STR.FOO.
+        buildConfigField("String", "POS_REQUEST_VAR", "\"${prop("POS_REQUEST_VAR")}\"")
+        buildConfigField("String", "POS_STATE_VAR", "\"${prop("POS_STATE_VAR")}\"")
+        buildConfigField("String", "POS_RESULT_VAR", "\"${prop("POS_RESULT_VAR")}\"")
+
         // Okta/Auth0 rewards (user_metadata.points) — optional; the dashboard
         // falls back to the static demo points when unset.
         buildConfigField("String", "OKTA_DOMAIN", "\"${prop("OKTA_DOMAIN")}\"")

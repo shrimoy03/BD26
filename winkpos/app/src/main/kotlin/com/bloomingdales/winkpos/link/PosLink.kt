@@ -82,6 +82,9 @@ object PosLink {
             "pxrrs" -> PxrrsTransport(
                 BuildConfig.POS_LINK_PXRRS_URL.ifBlank { "https://127.0.0.1:9090" },
                 context = context.applicationContext,
+                requestVar = BuildConfig.POS_REQUEST_VAR.ifBlank { "STR.GENERIC_1" },
+                stateVar = BuildConfig.POS_STATE_VAR.ifBlank { "STR.GENERIC_2" },
+                resultVar = BuildConfig.POS_RESULT_VAR.ifBlank { "STR.TRANSACTION_RESULT" },
             )
             "pcl" -> PclSerialTransport(PaxNeptuneSerialIo(context.applicationContext))
             else -> null
