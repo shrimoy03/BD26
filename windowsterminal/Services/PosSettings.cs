@@ -95,6 +95,16 @@ public sealed class PosSettings
     /// <summary>FACE or PALM — which tender <see cref="BiometricTriggerForm"/> means.</summary>
     public string BiometricTriggerMethod { get; set; } = "FACE";
 
+    /// <summary>
+    /// Variable the tender button writes with PxDesigner's SetVariable action,
+    /// holding "face" or "palm". This is the supported way to signal the
+    /// register: FireEvent relies on PXRRS dispatching a notification, which it
+    /// does not do on this terminal, whereas a variable can simply be polled.
+    /// Create it in PxDesigner's variable manager (or reuse a spare stock
+    /// STR.* variable) and set the same name here. Blank disables it.
+    /// </summary>
+    public string BiometricTriggerVariable { get; set; } = "";
+
     // ----- Mailbox variables -----
     //
     // The sequence diagram pushes IS_TRANS_STARTED to both parties via notify,
@@ -212,6 +222,7 @@ public sealed class PosSettings
             StateVariable: StateVariable,
             ResultVariable: ResultVariable,
             TriggerForm: Env("POS_BIOMETRIC_TRIGGER_FORM") ?? BiometricTriggerForm,
+            TriggerVariable: Env("POS_BIOMETRIC_TRIGGER_VAR") ?? BiometricTriggerVariable,
             TriggerMethod: string.IsNullOrWhiteSpace(BiometricTriggerMethod)
                 ? "FACE"
                 : BiometricTriggerMethod.Trim().ToUpperInvariant(),
@@ -322,6 +333,7 @@ public sealed record LinkConfig(
     string StateVariable,
     string ResultVariable,
     string TriggerForm,
+    string TriggerVariable,
     string TriggerMethod,
     string NotifyCertPath,
     string NotifyCertPassword,

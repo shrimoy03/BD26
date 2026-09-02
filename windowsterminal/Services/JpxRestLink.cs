@@ -68,6 +68,7 @@ public sealed class JpxRestLink : ITerminalLink
     private readonly string _notifyCertPath;
     private readonly string _notifyCertPassword;
     private readonly string _triggerForm;
+    private readonly string _triggerVar;
     private readonly string _triggerMethod;
     private readonly string _requestVar;
     private readonly string _stateVar;
@@ -93,6 +94,7 @@ public sealed class JpxRestLink : ITerminalLink
         _notifyCertPath = config.NotifyCertPath;
         _notifyCertPassword = config.NotifyCertPassword;
         _triggerForm = config.TriggerForm?.Trim() ?? "";
+        _triggerVar = config.TriggerVariable?.Trim() ?? "";
         _triggerMethod = config.TriggerMethod;
         _requestVar = config.RequestVariable;
         _stateVar = config.StateVariable;
@@ -235,11 +237,19 @@ public sealed class JpxRestLink : ITerminalLink
         await StartNotifyServerAsync();
         _ = Task.Run(() => MaintainLinkAsync(_cts.Token));
 
-        if (_triggerForm.Length > 0)
+        if (_triggerForm.Length > 0 || _triggerVar.Length > 0)
         {
             _ = Task.Run(() => WatchTriggerFormAsync(_cts.Token));
-            Console.WriteLine(
-                $"[JpxRestLink] watching for form '{_triggerForm}' as a {_triggerMethod} tender");
+            if (_triggerVar.Length > 0)
+            {
+                Console.WriteLine($"[JpxRestLink] watching {_triggerVar} for a biometric tender");
+            }
+
+            if (_triggerForm.Length > 0)
+            {
+                Console.WriteLine(
+                    $"[JpxRestLink] watching for form '{_triggerForm}' as a {_triggerMethod} tender");
+            }
         }
 
         Console.WriteLine($"[JpxRestLink] driving {_baseUrl}, notify at {_notifyUrl}");
@@ -266,6 +276,13 @@ public sealed class JpxRestLink : ITerminalLink
             }
 
             if (!_connected) continue;
+
+            // Preferred route: the button carries a PxDesigner SetVariable
+            // action writing "face"/"palm" here. Unlike FireEvent this needs no
+            // notification from PXRRS, so it works on this terminal today.
+            if (_triggerVar.Length > 0 && await ReadBiometricTriggerAsync()) continue;
+
+            if (_triggerForm.Length == 0) continue;
 
             string? screen;
             try
@@ -710,6 +727,42 @@ public sealed class JpxRestLink : ITerminalLink
             Console.WriteLine($"[JpxRestLink] subscribe with certificate failed: {e.Message}");
             return await PostAsync(path, null);
         }
+    }
+
+    /// <summary>
+    /// Read the trigger variable and, if it names a biometric tender, raise it
+    /// once. The value is stamped back to a neutral marker so holding on the
+    /// screen does not re-fire it — PXRRS rejects an empty value, hence "none"
+    /// rather than blank. Returns true when a tender was raised.
+    /// </summary>
+    private async Task<bool> ReadBiometricTriggerAsync()
+    {
+        string? value;
+        try
+        {
+            value = await GetVariableAsync(_triggerVar);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+
+        var method = value?.Trim().ToUpperInvariant() switch
+        {
+            "FACE" => "FACE",
+            "PALM" => "PALM",
+            _ => null,
+        };
+        if (method is null) return false;
+
+        await SetVariableAsync(_triggerVar, "none");
+        Console.WriteLine($"[JpxRestLink] {_triggerVar}={value} — starting {method} tender");
+        MessageReceived?.Invoke(new PosMessage
+        {
+            Type = PosMessageTypes.TenderSelected,
+            Method = method,
+        });
+        return true;
     }
 
     private async Task<bool> ProbeAsync()
