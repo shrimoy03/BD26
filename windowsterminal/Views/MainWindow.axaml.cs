@@ -88,7 +88,10 @@ public partial class MainWindow : Window
         await Shot("01-loyalty");
         PressT(vm, 1);                  // lookup loyalty → B.TEST linked
         await Shot("02-scan-empty");
-        vm.ScanUpc("3145891313406");    // Chanel Beaute 50.00
+        PressT(vm, 5);                  // items page
+        await Shot("02b-items");
+        vm.AddCatalogItemCommand.Execute(vm.CatalogItems[0]); // Chanel Beaute 50.00
+        vm.CloseItemsCommand.Execute(null);
         await Shot("03-scan-item");
         PressT(vm, 1);                  // checkout
         await Shot("04-checkout");

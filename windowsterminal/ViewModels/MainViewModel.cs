@@ -140,6 +140,9 @@ public partial class MainViewModel : ViewModelBase
     public partial bool ShowSetup { get; set; }
 
     [ObservableProperty]
+    public partial bool ShowItems { get; set; }
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OnlineLabel))]
     public partial bool IsTerminalConnected { get; set; }
 
@@ -239,8 +242,8 @@ public partial class MainViewModel : ViewModelBase
                 new TKey(2, "Enroll in Loyalty", true),
                 new TKey(3, "Apply for New Account", true),
                 new TKey(4, "Lookup Account", true),
-                new TKey(5, "", false),
-                new TKey(6, "", false),
+                new TKey(5, "Items", true),
+                new TKey(6, "Terminal Setup", true),
                 new TKey(7, "Pay By Link", true),
                 new TKey(8, "Input Account on Signature Pad", true),
             },
@@ -250,7 +253,7 @@ public partial class MainViewModel : ViewModelBase
                 new TKey(2, "Change Price", hasItems),
                 new TKey(3, "Send Merchandise", true),
                 new TKey(4, "Add Gift Receipts on All", true),
-                new TKey(5, "Print on Salescheck", hasItems),
+                new TKey(5, "Items", true),
                 new TKey(6, "Change Tax", hasItems),
                 new TKey(7, "Loyallist Lookup/Enrollment", !CustomerLinked),
                 new TKey(8, "Add Registry on All", true),
@@ -346,6 +349,12 @@ public partial class MainViewModel : ViewModelBase
             case 3:
                 Status = "New account application sent to Signature Pad";
                 break;
+            case 5:
+                OpenItems();
+                break;
+            case 6:
+                OpenSetup();
+                break;
             case 7:
                 Status = "Pay By Link — register is in Send Merchandise mode";
                 break;
@@ -371,7 +380,7 @@ public partial class MainViewModel : ViewModelBase
             case 2: Status = "Change Price — supervisor required"; break;
             case 3: Status = "Send Merchandise mode"; break;
             case 4: Status = "Gift receipts added on all"; break;
-            case 5: Status = "Print on Salescheck"; break;
+            case 5: OpenItems(); break;
             case 6: Status = "Change Tax — supervisor required"; break;
             case 7: LinkLoyalty(); break;
             case 8: Status = "Registry added on all"; break;
@@ -492,6 +501,31 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(CashEntryDisplay));
     }
 
+    // ----- Items page (T5): tap-to-add for the demo -----
+
+    public IReadOnlyList<Product> CatalogItems => Catalog;
+
+    [RelayCommand]
+    private void OpenItems()
+    {
+        if (Stage is not (RegisterStage.Loyalty or RegisterStage.Scan)) return;
+        ShowItems = true;
+    }
+
+    [RelayCommand]
+    private void CloseItems() => ShowItems = false;
+
+    [RelayCommand]
+    private void AddCatalogItem(Product product)
+    {
+        // Tapping an item from the loyalty prompt implies bypassing loyalty.
+        if (Stage == RegisterStage.Loyalty)
+        {
+            Stage = RegisterStage.Scan;
+        }
+        ScanUpc(product.Sku);
+    }
+
     public void ScanUpc(string upc)
     {
         var product = Catalog.FirstOrDefault(p => p.Sku == upc);
@@ -503,7 +537,7 @@ public partial class MainViewModel : ViewModelBase
         var line = new SaleLine(_uid++, product);
         Lines.Add(line);
         SelectLineInternal(line);
-        Status = "";
+        Status = $"{product.Name} added";
         Refresh();
     }
 
@@ -520,7 +554,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void DeleteLine()
     {
-        if (ShowSetup || Stage != RegisterStage.Scan || _selected is null) return;
+        if (ShowSetup || ShowItems || Stage != RegisterStage.Scan || _selected is null) return;
         Lines.Remove(_selected);
         _selected = Lines.LastOrDefault();
         if (_selected is not null) SelectLineInternal(_selected);
@@ -563,6 +597,11 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private async Task EscapeAsync()
     {
+        if (ShowItems)
+        {
+            ShowItems = false;
+            return;
+        }
         if (ShowSetup)
         {
             ShowSetup = false;
@@ -781,6 +820,7 @@ public partial class MainViewModel : ViewModelBase
         Payments.Clear();
         CustomerName = null;
         _selected = null;
+        ShowItems = false;
         IsAwaitingTerminal = false;
         _terminalOrderId = null;
         ClearEntry();

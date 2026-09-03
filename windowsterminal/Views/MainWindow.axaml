@@ -30,6 +30,7 @@
     <Viewbox Stretch="Uniform">
         <Panel x:Name="RootCanvas" Width="1600" Height="1000" Background="#C9C4B2">
             <v:RegisterView />
+            <v:ItemsOverlay IsVisible="{Binding ShowItems}" />
             <v:SetupOverlay IsVisible="{Binding ShowSetup}" />
         </Panel>
     </Viewbox>

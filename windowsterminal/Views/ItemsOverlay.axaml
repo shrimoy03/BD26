@@ -1,0 +1,103 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MerchantTerminal.ViewModels"
+             xmlns:m="using:MerchantTerminal.Models"
+             x:Class="MerchantTerminal.Views.ItemsOverlay"
+             x:DataType="vm:MainViewModel"
+             FontFamily="Tahoma, Geneva, Arial">
+
+    <!-- Demo helper (T5): tap-to-add items page, styled after the AYS. -->
+
+    <UserControl.Styles>
+        <Style Selector="Button.item-tile">
+            <Setter Property="Background" Value="#FCFBF2" />
+            <Setter Property="BorderBrush" Value="#55534A" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="2" />
+            <Setter Property="Padding" Value="18,14" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.item-tile:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#F3EFD8" />
+            <Setter Property="BorderBrush" Value="#8A1E27" />
+        </Style>
+        <Style Selector="Button.item-tile:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#E9E2C2" />
+        </Style>
+    </UserControl.Styles>
+
+    <Panel>
+        <!-- Scrim: click outside to close -->
+        <Button Background="#66000000" BorderThickness="0" CornerRadius="0"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                Command="{Binding CloseItemsCommand}" />
+
+        <Border Width="820" Height="560" Background="#F9F7DF"
+                BorderBrush="#3A0A10" BorderThickness="2"
+                HorizontalAlignment="Center" VerticalAlignment="Center">
+            <DockPanel>
+
+                <!-- Header bar -->
+                <Border DockPanel.Dock="Top" Height="52">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                            <GradientStop Color="#A62D34" Offset="0" />
+                            <GradientStop Color="#5F0F18" Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <DockPanel Margin="18,0">
+                        <TextBlock DockPanel.Dock="Left" Text="Items" FontSize="19" FontWeight="Bold"
+                                   Foreground="White" VerticalAlignment="Center" />
+                        <TextBlock DockPanel.Dock="Right" Text="Tap an item to add it to the sale"
+                                   FontSize="13" Foreground="#F0D9D0" VerticalAlignment="Center" />
+                        <Panel />
+                    </DockPanel>
+                </Border>
+
+                <!-- Footer: close -->
+                <Border DockPanel.Dock="Bottom" Padding="18,12" BorderBrush="#55534A"
+                        BorderThickness="0,1,0,0">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Left" Text="Esc - Close" FontSize="14"
+                                   FontWeight="Bold" Foreground="#6E7B00" VerticalAlignment="Center" />
+                        <Button DockPanel.Dock="Right" Classes="tkey-done" Width="150" Height="42"
+                                Command="{Binding CloseItemsCommand}"
+                                Background="#8A1E27" Foreground="White" CornerRadius="2"
+                                BorderBrush="#3A0A10" BorderThickness="1"
+                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                            <TextBlock Text="Done" FontSize="16" FontWeight="Bold" Foreground="White" />
+                        </Button>
+                        <Panel />
+                    </DockPanel>
+                </Border>
+
+                <!-- Item grid -->
+                <ItemsControl ItemsSource="{Binding CatalogItems}" Margin="14">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Columns="2" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="m:Product">
+                            <Button Classes="item-tile" Margin="8"
+                                    Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).AddCatalogItemCommand}"
+                                    CommandParameter="{Binding}">
+                                <StackPanel Spacing="8" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Name}" FontSize="19" FontWeight="Bold"
+                                               Foreground="#141414" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding Sku}" FontSize="13" Foreground="#141414" />
+                                    <TextBlock Text="{Binding PriceDisplay}" FontSize="17" FontWeight="Bold"
+                                               Foreground="#8A1E27" />
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </DockPanel>
+        </Border>
+    </Panel>
+</UserControl>
