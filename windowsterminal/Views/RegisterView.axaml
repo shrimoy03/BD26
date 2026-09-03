@@ -65,6 +65,33 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- Function bar: the old F-key actions as real buttons, so the demo
+             never needs a keyboard. The shortcuts still work. -->
+        <Style Selector="Button.fkey">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="CornerRadius" Value="2" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="#8A867A" />
+            <Setter Property="Background" Value="#E7E2CD" />
+            <Setter Property="Foreground" Value="#141414" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.fkey:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#F2EEDC" />
+            <Setter Property="BorderBrush" Value="#8A1E27" />
+        </Style>
+        <Style Selector="Button.fkey:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#D6D0B8" />
+        </Style>
+        <Style Selector="Button.fkey:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#DAD6C4" />
+            <Setter Property="Foreground" Value="#9A968A" />
+        </Style>
         <Style Selector="Button.tkey:pressed /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background">
                 <Setter.Value>
@@ -77,7 +104,7 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid RowDefinitions="34,*,176,40" Background="#C9C4B2">
+    <Grid RowDefinitions="34,*,176,38,40" Background="#C9C4B2">
 
         <!-- ===== Title strip ===== -->
         <Border Grid.Row="0">
@@ -468,8 +495,36 @@
             </ItemsControl.ItemTemplate>
         </ItemsControl>
 
+        <!-- ===== Function bar ===== -->
+        <Border Grid.Row="3" Background="#CFCAB6" BorderBrush="#8A867A" BorderThickness="0,1,0,0">
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="10,0"
+                        VerticalAlignment="Center">
+                <Button Classes="fkey" Content="Back" Command="{Binding EscapeCommand}"
+                        ToolTip.Tip="Step back one screen (Esc)" />
+                <Button Classes="fkey" Content="Cancel Transaction"
+                        Command="{Binding CancelTransactionCommand}"
+                        ToolTip.Tip="Void the whole sale and start over (F3)" />
+                <Button Classes="fkey" Content="Bypass Loyalty" Command="{Binding BypassCommand}"
+                        IsVisible="{Binding IsLoyaltyStage}"
+                        ToolTip.Tip="Skip the loyalty prompt (F6)" />
+                <Button Classes="fkey" Content="Void Line" Command="{Binding DeleteLineCommand}"
+                        IsVisible="{Binding IsScanStage}"
+                        ToolTip.Tip="Remove the selected line (Delete)" />
+                <Button Classes="fkey" Content="Suspend" Command="{Binding SuspendCommand}"
+                        ToolTip.Tip="Suspend the transaction (F8)" />
+                <Button Classes="fkey" Content="New Sale" Command="{Binding NewSaleCommand}" />
+
+                <Border Width="1" Height="20" Background="#8A867A" Margin="6,0" />
+
+                <Button Classes="fkey" Content="Items" Command="{Binding OpenItemsCommand}"
+                        ToolTip.Tip="Tap-to-add items page" />
+                <Button Classes="fkey" Content="Terminal Setup" Command="{Binding OpenSetupCommand}"
+                        ToolTip.Tip="Payment terminal connection (F9)" />
+            </StackPanel>
+        </Border>
+
         <!-- ===== Status bar ===== -->
-        <Border Grid.Row="3" Background="#D9D4C0" BorderBrush="#8A867A" BorderThickness="0,1,0,0">
+        <Border Grid.Row="4" Background="#D9D4C0" BorderBrush="#8A867A" BorderThickness="0,1,0,0">
             <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto" Margin="6,2">
                 <StackPanel Grid.Column="0" Margin="0,0,26,0">
                     <TextBlock Text="72027959" FontSize="11.5" />

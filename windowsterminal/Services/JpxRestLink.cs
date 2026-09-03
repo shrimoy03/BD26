@@ -70,6 +70,7 @@ public sealed class JpxRestLink : ITerminalLink
     private readonly string _triggerForm;
     private readonly string _triggerVar;
     private readonly string _triggerMethod;
+    private readonly bool _manageSubscription;
     private readonly string _requestVar;
     private readonly string _stateVar;
     private readonly string _resultVar;
@@ -96,6 +97,7 @@ public sealed class JpxRestLink : ITerminalLink
         _triggerForm = config.TriggerForm?.Trim() ?? "";
         _triggerVar = config.TriggerVariable?.Trim() ?? "";
         _triggerMethod = config.TriggerMethod;
+        _manageSubscription = config.ManageSubscription;
         _requestVar = config.RequestVariable;
         _stateVar = config.StateVariable;
         _resultVar = config.ResultVariable;
@@ -331,8 +333,22 @@ public sealed class JpxRestLink : ITerminalLink
             {
                 if (!useTls) return;
                 var cert = LoadNotifyCertificate();
-                if (cert is not null) listen.UseHttps(cert);
-                else Console.WriteLine("[JpxRestLink] WARNING: https notify requested but no server certificate — falling back to http");
+                if (cert is null)
+                {
+                    Console.WriteLine("[JpxRestLink] WARNING: https notify requested but no server certificate — falling back to http");
+                    return;
+                }
+
+                listen.UseHttps(https =>
+                {
+                    https.ServerCertificate = cert;
+
+                    // Pin TLS 1.2. Kestrel otherwise prefers 1.3, and the
+                    // terminal's Java client fails that handshake — PAX's own
+                    // Node sample negotiates 1.2 and does receive callbacks
+                    // with this exact certificate.
+                    https.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
+                });
             });
         });
 
@@ -731,23 +747,44 @@ public sealed class JpxRestLink : ITerminalLink
     private async Task<bool> SubscribeAsync()
     {
         _cyclesSinceSubscribe = 0;
-        var notifyUri = new Uri(_notifyUrl);
-        var reply = $"{notifyUri.Host}:{notifyUri.Port}";
-        var path = $"/subscribe?replyURL={Uri.EscapeDataString(reply)}";
+
+        // Leave an externally-owned subscription alone. Ours is accepted but
+        // never delivers, whereas the RetailDemoApplication's does — and since
+        // both point at this same callback, the events still arrive here.
+        if (!_manageSubscription)
+        {
+            Console.WriteLine("[JpxRestLink] not managing the subscription — listening only");
+            return true;
+        }
+
+        // Send the whole URL, scheme and path included. A bare "host:port" is
+        // still answered with resultCode 0, but PXRRS silently keeps whatever
+        // replyAddress it had — getSubscriptionData then shows the previous
+        // subscriber and every notification goes there instead of to us.
+        var path = $"/subscribe?replyURL={Uri.EscapeDataString(_notifyUrl)}";
 
         var certificate = LoadNotifyCertificate();
         if (certificate is null) return await PostAsync(path, null);
 
         try
         {
-            var pem = System.Security.Cryptography.PemEncoding.WriteString(
-                "CERTIFICATE", certificate.RawData);
+            // Prefer the PEM file verbatim over re-encoding the certificate.
+            // PemEncoding.WriteString emits LF and no trailing newline; the
+            // subscription only takes effect when the file's own bytes (CRLF,
+            // trailing newline) are sent, so PXRRS's parser is evidently picky.
+            var pemFile = System.IO.Path.Combine(
+                AppContext.BaseDirectory, "certs", "server_pci7.cert");
+            var pem = System.IO.File.Exists(pemFile)
+                ? await System.IO.File.ReadAllTextAsync(pemFile)
+                : System.Security.Cryptography.PemEncoding.WriteString(
+                    "CERTIFICATE", certificate.RawData);
 
             using var form = new System.Net.Http.MultipartFormDataContent();
             var part = new StringContent(pem, Encoding.ASCII);
             part.Headers.ContentType =
                 new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
-            form.Add(part, "fileName", "server_pci7.cert");
+            // The API doc names this part "filename" (all lower case).
+            form.Add(part, "filename", "server_pci7.cert");
 
             var response = await _http.PostAsync($"{_baseUrl}{path}", form);
             var body = await response.Content.ReadAsStringAsync();

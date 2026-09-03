@@ -128,10 +128,17 @@ public partial class MainWindow : Window
     /// </summary>
     private bool IsTypingInField() => FocusManager?.GetFocusedElement() is TextBox;
 
+    /// <summary>
+    /// True while a modal page owns the screen. Feeding the UPC buffer behind
+    /// an open page lets a stray Enter submit a half-typed code, and gives the
+    /// page's own buttons a second way to be triggered.
+    /// </summary>
+    private bool IsOverlayOpen() => Vm is { } vm && (vm.ShowItems || vm.ShowSetup);
+
     private void OnTextInput(object? sender, TextInputEventArgs e)
     {
         if (Vm is not { } vm || string.IsNullOrEmpty(e.Text)) return;
-        if (IsTypingInField()) return;
+        if (IsTypingInField() || IsOverlayOpen()) return;
         foreach (var c in e.Text)
         {
             vm.EntryChar(c);
@@ -141,7 +148,7 @@ public partial class MainWindow : Window
     private void OnKeyDownHandler(object? sender, KeyEventArgs e)
     {
         if (Vm is not { } vm) return;
-        if (IsTypingInField()) return;
+        if (IsTypingInField() || IsOverlayOpen()) return;
         switch (e.Key)
         {
             case Key.Enter:

@@ -67,6 +67,25 @@ public sealed class PosSettings
     public string NotifyHost { get; set; } = "";
 
     /// <summary>
+    /// Path of the callback endpoint. PAX's own sample ECR uses
+    /// /api/pxserv/notify and that is the shape their terminals are tested
+    /// against, so it is the default here; the listener accepts any path
+    /// regardless.
+    /// </summary>
+    public string NotifyPath { get; set; } = "/api/pxserv/notify";
+
+    /// <summary>
+    /// Whether the register registers its own callback with /subscribe.
+    /// Our subscription is accepted (resultCode 0, and getSubscriptionData
+    /// reports our address) yet no notification is ever delivered, while the
+    /// same replyURL registered by PAX's RetailDemoApplication does receive
+    /// them. Setting this false leaves the subscription alone and just listens
+    /// on the callback, so the demo app can own it and the events still land
+    /// here. Unblocks the demo while PAX explain the difference.
+    /// </summary>
+    public bool ManageSubscription { get; set; } = true;
+
+    /// <summary>
     /// Serve the notify callback over HTTPS and advertise it as https://.
     /// PAX's own RetailDemoApplication subscribes with an https replyURL, and
     /// PXRRS appears not to deliver to a plain-http one.
@@ -228,6 +247,7 @@ public sealed class PosSettings
             TriggerMethod: string.IsNullOrWhiteSpace(BiometricTriggerMethod)
                 ? "FACE"
                 : BiometricTriggerMethod.Trim().ToUpperInvariant(),
+            ManageSubscription: ManageSubscription,
             NotifyCertPath: Env("POS_NOTIFY_P12") ?? NotifyCertPath,
             NotifyCertPassword: string.IsNullOrWhiteSpace(NotifyCertPassword)
                 ? DefaultCertPassword
@@ -257,7 +277,9 @@ public sealed class PosSettings
             ? LocalAddressFor(TerminalHost, TerminalPort) ?? "127.0.0.1"
             : NotifyHost.Trim();
         var scheme = NotifyUseTls ? "https" : "http";
-        return $"{scheme}://{host}:{NotifyPort}/notify";
+        var path = string.IsNullOrWhiteSpace(NotifyPath) ? "/notify" : NotifyPath.Trim();
+        if (!path.StartsWith('/')) path = "/" + path;
+        return $"{scheme}://{host}:{NotifyPort}{path}";
     }
 
     // ================= network helpers =================
@@ -337,6 +359,7 @@ public sealed record LinkConfig(
     string TriggerForm,
     string TriggerVariable,
     string TriggerMethod,
+    bool ManageSubscription,
     string NotifyCertPath,
     string NotifyCertPassword,
     int WebSocketPort,

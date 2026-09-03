@@ -30,8 +30,12 @@
     </UserControl.Styles>
 
     <Panel>
-        <!-- Scrim: click outside to close -->
+        <!-- Scrim: click outside to close. Not focusable and not a tab stop:
+             otherwise it can take focus after a tile is tapped, and the next
+             Enter (including one from the scan gun) activates it and closes the
+             page mid-order. -->
         <Button Background="#66000000" BorderThickness="0" CornerRadius="0"
+                Focusable="False" IsTabStop="False"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                 Command="{Binding CloseItemsCommand}" />
 
@@ -84,6 +88,7 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="m:Product">
                             <Button Classes="item-tile" Margin="8"
+                                    Focusable="False" IsTabStop="False"
                                     Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).AddCatalogItemCommand}"
                                     CommandParameter="{Binding}">
                                 <StackPanel Spacing="8" VerticalAlignment="Center">
