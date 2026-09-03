@@ -42,6 +42,38 @@ calling the **Wink payments API directly** from the host app.
   adb install -r app/build/outputs/apk/debug/app-debug.apk
   ```
 
+## Launching into face capture from the register
+
+Windows cannot start an Android app: intents are on-device IPC, PXRRS has no
+launch command (checked against the full API list), and adb is a dev-only path.
+`BOOL.FOREGROUND=false` does not *start* anything either — it only drops
+PxRetailer's foreground so whatever is already running becomes visible.
+
+So the launch has to come from this side. This app stays resident, watches the
+mailbox, and fires the intent **to itself** when the register hands over a
+biometric sale — which is why PAX's diagram sets `FOREGROUND=false` at startup
+and assumes WinkPay is already up.
+
+Build checklist, in order:
+
+1. `cp local.properties.example local.properties` and fill in `WINK_CLIENT_ID`
+   and `WINK_MERCHANT_CLIENT_SECRET`. `POS_LINK_MODE=pxrrs` must be set or the
+   link is compiled out and nothing happens.
+2. `app/src/main/assets/pxrrs-integration-client.p12` is committed — check it
+   survived your clone; PXRRS needs it even over loopback.
+3. `./gradlew :app:assembleDebug && adb install -r app/build/outputs/apk/debug/app-debug.apk`
+4. `adb shell appops set com.bloomingdales.winkpos SYSTEM_ALERT_WINDOW allow`
+   — without it `startActivity` is silently dropped while backgrounded, which
+   looks exactly like the handover failing.
+5. Leave the app running (it may sit behind PxRetailer). Confirm the link with
+   `adb logcat -s PxrrsTransport` — you want `order received:` when the register
+   sends a FACE tender.
+
+The register side is already verified against an A3700: it publishes the order,
+raises the flag and backgrounds PxRetailer. T8 at checkout (or T7 on the opening
+screen) triggers a FACE tender directly for testing, without needing the
+terminal's own Face button.
+
 ## Register link over PXRRS
 
 Per PAX's BloomingdaleDemo sequence diagram this app is the `:WinkPay`

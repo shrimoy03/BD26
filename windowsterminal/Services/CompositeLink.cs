@@ -70,6 +70,8 @@ public sealed class CompositeLink : ITerminalLink
                 // Backgrounding first would flash the Android home screen.
                 var winkPayOk = await _ws.SendAsync(message);
                 var yieldedOk = await _rest.SendAsync(message);
+                Console.WriteLine(
+                    $"[CompositeLink] {message.Method}: winkpos websocket={winkPayOk}, PXRRS handover={yieldedOk}");
                 return winkPayOk || yieldedOk;
             case PosMessageTypes.StartPayment:
                 return await _rest.SendAsync(message);

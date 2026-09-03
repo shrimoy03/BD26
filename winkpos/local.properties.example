@@ -1,0 +1,33 @@
+# Copy to local.properties (which is gitignored) and fill in the Wink values.
+#
+# Android SDK location — Android Studio writes this for you when it first opens
+# the project; on a clean checkout you may need it by hand.
+#sdk.dir=/Users/<you>/Library/Android/sdk
+
+# ---- WinkPay SDK credentials (required for real capture) ----
+WINK_CLIENT_ID=
+WINK_MERCHANT_CLIENT_SECRET=
+WINK_ENV=stage
+
+# ---- Register link ----
+# "pxrrs" makes this app the :WinkPay participant from PAX's sequence diagram:
+# it talks to the PxRetailer REST service on this same terminal and picks the
+# sale up out of a form variable. Without this the link is disabled and the app
+# just runs the standalone demo.
+POS_LINK_MODE=pxrrs
+
+# PXRRS on the terminal. HTTPS with mutual TLS even over loopback, using
+# app/src/main/assets/pxrrs-integration-client.p12.
+POS_LINK_PXRRS_URL=https://127.0.0.1:9090
+
+# Mailbox variables. These are the defaults and must match the register's
+# settings.json (RequestVariable / StateVariable / ResultVariable). A PxDesigner
+# Text variable FOO is addressed over REST as STR.FOO, so keep the prefix.
+POS_REQUEST_VAR=STR.GENERIC_1
+POS_STATE_VAR=STR.GENERIC_2
+POS_RESULT_VAR=STR.TRANSACTION_RESULT
+
+# ---- Optional: Okta/Auth0 rewards on the dashboard ----
+OKTA_DOMAIN=
+OKTA_MTM_CLIENT_ID=
+OKTA_CLIENT_SECRET=

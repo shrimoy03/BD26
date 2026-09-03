@@ -244,7 +244,7 @@ public partial class MainViewModel : ViewModelBase
                 new TKey(4, "Lookup Account", true),
                 new TKey(5, "Items", true),
                 new TKey(6, "Terminal Setup", true),
-                new TKey(7, "Pay By Link", true),
+                new TKey(7, "Face Pay (WinkPay direct)", true),
                 new TKey(8, "Input Account on Signature Pad", true),
             },
             RegisterStage.Scan => new[]
@@ -266,8 +266,8 @@ public partial class MainViewModel : ViewModelBase
                 new TKey(4, "", false),
                 new TKey(5, "Gift Card/Rewards Happy Returns", true),
                 new TKey(6, "", false),
-                new TKey(7, "", false),
-                new TKey(8, "More Payment Methods", true),
+                new TKey(7, "More Payment Methods", true),
+                new TKey(8, "Face Pay (WinkPay direct)", true),
             },
             RegisterStage.MorePayments => new[]
             {
@@ -356,9 +356,20 @@ public partial class MainViewModel : ViewModelBase
                 OpenSetup();
                 break;
             case 7:
-                Status = "Pay By Link — register is in Send Merchandise mode";
+                TestFacePay();
                 break;
         }
+    }
+
+    /// <summary>
+    /// Test shortcut: hand a sale straight to WinkPay from the opening screen,
+    /// without waiting on the terminal's Face event. Adds a demo item first so
+    /// the amount is not zero. Same path as T8 at checkout.
+    /// </summary>
+    private void TestFacePay()
+    {
+        if (Lines.Count == 0) ScanUpc(Catalog[0].Sku);
+        StartCardTender("FACE");
     }
 
     private void LinkLoyalty()
@@ -410,8 +421,16 @@ public partial class MainViewModel : ViewModelBase
             case 5:
                 Status = "Gift Card / Rewards — have customer swipe the card";
                 break;
-            case 8:
+            case 7:
                 Stage = RegisterStage.MorePayments;
+                break;
+            case 8:
+                // Test path: skip waiting for the terminal's Face event and
+                // hand the sale straight to WinkPay. CompositeLink sends FACE
+                // to the WebSocket (winkpos launches into face capture) and to
+                // the REST link, which drops PxRetailer's foreground so WinkPay
+                // can take the screen.
+                StartCardTender("FACE");
                 break;
         }
     }

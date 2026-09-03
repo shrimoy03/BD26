@@ -101,7 +101,10 @@ public sealed class JpxRestLink : ITerminalLink
         _requestVar = config.RequestVariable;
         _stateVar = config.StateVariable;
         _resultVar = config.ResultVariable;
-        _http = new HttpClient(BuildHandler(config)) { Timeout = TimeSpan.FromSeconds(10) };
+        // 10s was not enough: the A3700 regularly takes longer than that on
+        // setVariable and the listBox calls, and a timed-out handover leaves the
+        // sale half-published.
+        _http = new HttpClient(BuildHandler(config)) { Timeout = TimeSpan.FromSeconds(30) };
     }
 
     /// <summary>Bundled fallback when no cert path is configured.</summary>
@@ -542,16 +545,20 @@ public sealed class JpxRestLink : ITerminalLink
             // Phase 2 + 3 of the sequence diagram, as mailboxes: publish the
             // order, then raise the handshake flag WinkPay is polling. Order
             // matters — the flag must not go up before the details are readable.
+            Console.WriteLine($"[JpxRestLink] {message.Method} tender — handing the sale to WinkPay");
             var published = await SetVariableAsync(_requestVar, PosJson.Serialize(message));
             var flagged = await SetVariableAsync(_stateVar, StateOrderReady);
             if (!published || !flagged)
             {
-                Console.WriteLine($"[JpxRestLink] could not hand the sale to WinkPay via {_requestVar}/{_stateVar}");
+                Console.WriteLine($"[JpxRestLink] could not hand over: {_requestVar} set={published}, {_stateVar} set={flagged}");
                 return false;
             }
 
             StartResultPolling();
-            return await SetForegroundAsync(false);
+            var yielded = await SetForegroundAsync(false);
+            Console.WriteLine(
+                $"[JpxRestLink] order published to {_requestVar}, {_stateVar}=1, PxRetailer backgrounded={yielded}");
+            return yielded;
         }
 
         if (message.Type is not (PosMessageTypes.StartPayment or PosMessageTypes.CancelPayment))
