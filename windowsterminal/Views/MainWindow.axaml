@@ -8,7 +8,7 @@
         x:Class="MerchantTerminal.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Width="1280" Height="800"
-        Background="{DynamicResource Bg}"
+        Background="#C9C4B2"
         FontFamily="{StaticResource Sans}"
         Title="Bloomingdale's POS">
 
@@ -16,20 +16,20 @@
         <vm:MainViewModel />
     </Design.DataContext>
 
+    <!-- AYS register keys: F3 cancel txn, F6 bypass loyalty, F8 suspend,
+         Esc step back, Delete void line. F9 opens the terminal setup screen. -->
     <Window.KeyBindings>
-        <KeyBinding Gesture="F2" Command="{Binding ItemSearchCommand}" />
-        <KeyBinding Gesture="F4" Command="{Binding OpenPromosCommand}" />
-        <KeyBinding Gesture="F6" Command="{Binding PriceOverrideCommand}" />
+        <KeyBinding Gesture="F3" Command="{Binding CancelTransactionCommand}" />
+        <KeyBinding Gesture="F6" Command="{Binding BypassCommand}" />
+        <KeyBinding Gesture="F8" Command="{Binding SuspendCommand}" />
         <KeyBinding Gesture="F9" Command="{Binding OpenSetupCommand}" />
+        <KeyBinding Gesture="Escape" Command="{Binding EscapeCommand}" />
+        <KeyBinding Gesture="Delete" Command="{Binding DeleteLineCommand}" />
     </Window.KeyBindings>
 
     <Viewbox Stretch="Uniform">
-        <Panel x:Name="RootCanvas" Width="1600" Height="1000" Background="{DynamicResource Bg}">
+        <Panel x:Name="RootCanvas" Width="1600" Height="1000" Background="#C9C4B2">
             <v:RegisterView />
-            <v:CustomerOverlay IsVisible="{Binding ShowCustomer}" />
-            <v:PromosOverlay IsVisible="{Binding ShowPromos}" />
-            <v:TenderOverlay IsVisible="{Binding ShowTender}" />
-            <v:DoneOverlay IsVisible="{Binding ShowDone}" />
             <v:SetupOverlay IsVisible="{Binding ShowSetup}" />
         </Panel>
     </Viewbox>

@@ -3,400 +3,496 @@
              xmlns:vm="using:MerchantTerminal.ViewModels"
              xmlns:m="using:MerchantTerminal.Models"
              x:Class="MerchantTerminal.Views.RegisterView"
-             x:DataType="vm:MainViewModel">
+             x:DataType="vm:MainViewModel"
+             FontFamily="Tahoma, Geneva, Arial"
+             Foreground="#141414">
 
-    <Grid RowDefinitions="70,54,*">
+    <!-- ============================================================
+         Replica of the Bloomingdale's AYS register (BLM pos flow deck,
+         build 2026.6.1_1112): left basket panel, right prompt panel,
+         T1–T8 key grid, status bar. 1600×1000 fixed canvas.
+         ============================================================ -->
 
-        <!-- ===== Register header ===== -->
-        <Border Grid.Row="0" Background="{DynamicResource Panel}"
-                BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1">
-            <DockPanel Margin="24,0">
-                <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="7">
-                    <Panel Height="26" HorizontalAlignment="Left">
-                        <Image Source="avares://MerchantTerminal/Assets/bloomingdales_wordmark.png"
-                               Height="26" Stretch="Uniform"
-                               IsVisible="{Binding !IsDarkTheme}" />
-                        <Image Source="avares://MerchantTerminal/Assets/bloomingdales_wordmark_white.png"
-                               Height="26" Stretch="Uniform"
-                               IsVisible="{Binding IsDarkTheme}" />
-                    </Panel>
-                    <TextBlock Classes="label" Text="59TH STREET" LetterSpacing="3.2" />
+    <UserControl.Styles>
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="#141414" />
+        </Style>
+        <!-- Olive-green F-key legend text -->
+        <Style Selector="TextBlock.legend">
+            <Setter Property="Foreground" Value="#6E7B00" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <!-- Red advisory text -->
+        <Style Selector="TextBlock.advise">
+            <Setter Property="Foreground" Value="#BE2E20" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <!-- Prompt body text -->
+        <Style Selector="TextBlock.prompt">
+            <Setter Property="FontSize" Value="16.5" />
+            <Setter Property="LineHeight" Value="23" />
+        </Style>
+
+        <!-- T-keys: dark red gradient tiles -->
+        <Style Selector="Button.tkey">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="2" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="#3A0A10" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                        <GradientStop Color="#A62D34" Offset="0" />
+                        <GradientStop Color="#8A1E27" Offset="0.45" />
+                        <GradientStop Color="#5F0F18" Offset="1" />
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style Selector="Button.tkey:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                        <GradientStop Color="#B53A41" Offset="0" />
+                        <GradientStop Color="#96262F" Offset="0.45" />
+                        <GradientStop Color="#6B141D" Offset="1" />
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style Selector="Button.tkey:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                        <GradientStop Color="#5F0F18" Offset="0" />
+                        <GradientStop Color="#8A1E27" Offset="1" />
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="34,*,176,40" Background="#C9C4B2">
+
+        <!-- ===== Title strip ===== -->
+        <Border Grid.Row="0">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,0%">
+                    <GradientStop Color="#EFEDDF" Offset="0" />
+                    <GradientStop Color="#EAE6D6" Offset="0.62" />
+                    <GradientStop Color="#A8323A" Offset="0.86" />
+                    <GradientStop Color="#7E1A24" Offset="1" />
+                </LinearGradientBrush>
+            </Border.Background>
+            <DockPanel Margin="14,0,12,0">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="12"
+                            VerticalAlignment="Center">
+                    <Ellipse Width="13" Height="13" Fill="#2FA12F" Stroke="#1C6A1C" StrokeThickness="1" />
+                    <TextBlock Text="Purchase" FontSize="16" FontWeight="Bold" />
                 </StackPanel>
-
-                <Border DockPanel.Dock="Left" Width="1" Height="34" Background="{DynamicResource Line}"
-                        Margin="28,0,28,0" VerticalAlignment="Center" />
-
-                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="26" VerticalAlignment="Center">
-                    <StackPanel Spacing="3">
-                        <TextBlock Classes="label" Text="STORE" Opacity="0.75" />
-                        <TextBlock Text="0142 · Flagship" FontSize="12.5" FontWeight="Medium" />
-                    </StackPanel>
-                    <StackPanel Spacing="3">
-                        <TextBlock Classes="label" Text="REGISTER" Opacity="0.75" />
-                        <TextBlock Text="POS-07 · L3 Fine Jewelry" FontSize="12.5" FontWeight="Medium" />
-                    </StackPanel>
-                    <StackPanel Spacing="3">
-                        <TextBlock Classes="label" Text="ASSOCIATE" Opacity="0.75" />
-                        <TextBlock Text="D. Okonkwo · 44182" FontSize="12.5" FontWeight="Medium" />
-                    </StackPanel>
-                    <StackPanel Spacing="3">
-                        <TextBlock Classes="label" Text="TRANSACTION" Opacity="0.75" />
-                        <TextBlock Text="{Binding TxnId}" FontSize="12.5" FontWeight="Medium" />
-                    </StackPanel>
-                </StackPanel>
-
-                <Button DockPanel.Dock="Right" Classes="pos" Height="36" Padding="14,0"
-                        VerticalAlignment="Center" Command="{Binding ToggleThemeCommand}">
-                    <TextBlock Text="{Binding ThemeLabel}" FontSize="11" LetterSpacing="1.3"
-                               Foreground="{DynamicResource Dim}" />
-                </Button>
-
-                <TextBlock DockPanel.Dock="Right" Classes="mono dim" Text="{Binding ClockText}"
-                           FontSize="14" VerticalAlignment="Center" Margin="0,0,28,0" />
-
-                <!-- Terminal link status · click (or F9) for setup -->
-                <Button DockPanel.Dock="Right" Classes="pos" Height="36" Padding="12,0"
-                        VerticalAlignment="Center" Margin="0,0,14,0"
-                        Command="{Binding OpenSetupCommand}"
-                        ToolTip.Tip="Terminal setup (F9)">
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <Ellipse Width="7" Height="7" VerticalAlignment="Center"
-                                 Fill="{DynamicResource Pos}" IsVisible="{Binding IsTerminalConnected}" />
-                        <Ellipse Width="7" Height="7" VerticalAlignment="Center"
-                                 Fill="{DynamicResource Danger}" IsVisible="{Binding !IsTerminalConnected}" />
-                        <StackPanel Spacing="1" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding TerminalStatusLabel}" FontSize="11.5" />
-                            <TextBlock Classes="mono" Text="{Binding TerminalTargetLabel}" FontSize="9"
-                                       Foreground="{DynamicResource Dim}" />
-                        </StackPanel>
-                    </StackPanel>
-                </Button>
-
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8"
-                            VerticalAlignment="Center" Margin="0,0,20,0">
-                    <Ellipse Width="7" Height="7" Fill="{DynamicResource Pos}" VerticalAlignment="Center" />
-                    <TextBlock Text="Online" FontSize="12" Foreground="{DynamicResource Pos}" />
-                </StackPanel>
-
+                <TextBlock DockPanel.Dock="Right" Text="{Binding Build}" FontSize="12.5"
+                           FontWeight="Bold" Foreground="#F4E8E8" VerticalAlignment="Center" />
                 <Panel />
             </DockPanel>
         </Border>
 
-        <!-- ===== Entry / status bar ===== -->
-        <Border Grid.Row="1" Background="{DynamicResource Panel2}"
-                BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1">
-            <DockPanel Margin="24,0" VerticalAlignment="Center">
-                <TextBlock DockPanel.Dock="Left" Classes="mono" Text="SCAN / SKU" FontSize="12"
-                           LetterSpacing="1.7" Foreground="{DynamicResource Accent}"
-                           VerticalAlignment="Center" Margin="0,0,14,0" />
-                <TextBlock DockPanel.Dock="Right" Text="{Binding Status}" FontSize="12"
-                           Foreground="{DynamicResource Dim}" VerticalAlignment="Center" Margin="14,0,0,0" />
-                <Border Height="34" Background="{DynamicResource Panel}"
-                        BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="6">
-                    <TextBlock Classes="mono" Text="{Binding EntryDisplay}" FontSize="14"
-                               VerticalAlignment="Center" Margin="12,0" />
-                </Border>
-            </DockPanel>
-        </Border>
+        <!-- ===== Main area: basket + prompt panels ===== -->
+        <Grid Grid.Row="1" Margin="10,6,10,6" ColumnDefinitions="56*,44*">
 
-        <!-- ===== Basket + right rail ===== -->
-        <Grid Grid.Row="2" ColumnDefinitions="*,452">
+            <!-- ..... Left panel ..... -->
+            <Border Grid.Column="0" Background="#FCFBF2" BorderBrush="#55534A" BorderThickness="1">
+                <Panel>
 
-            <!-- Basket column -->
-            <Grid Grid.Column="0" RowDefinitions="*,Auto">
-                <Border Grid.Row="0" Background="{DynamicResource Bg}"
-                        BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0">
-                    <Grid RowDefinitions="Auto,*">
-                        <!-- Column header -->
-                        <Border Grid.Row="0" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1"
-                                Padding="24,12">
-                            <Grid ColumnDefinitions="56,12,*,12,120,12,70,12,130">
-                                <TextBlock Grid.Column="0" Classes="label" Text="LINE" LetterSpacing="1.7" />
-                                <TextBlock Grid.Column="2" Classes="label" Text="ITEM" LetterSpacing="1.7" />
-                                <TextBlock Grid.Column="4" Classes="label" Text="PRICE" LetterSpacing="1.7" HorizontalAlignment="Right" />
-                                <TextBlock Grid.Column="6" Classes="label" Text="QTY" LetterSpacing="1.7" HorizontalAlignment="Center" />
-                                <TextBlock Grid.Column="8" Classes="label" Text="AMOUNT" LetterSpacing="1.7" HorizontalAlignment="Right" />
+                    <!-- Loyalty stage: the two Loyallist card faces -->
+                    <StackPanel IsVisible="{Binding IsLoyaltyStage}" Spacing="52"
+                                HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <!-- Bloomingdale's Loyallist credit card -->
+                        <Border Width="268" Height="164" CornerRadius="10"
+                                BorderBrush="#2E2850" BorderThickness="1">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                                    <GradientStop Color="#6A5EBE" Offset="0" />
+                                    <GradientStop Color="#4A3F98" Offset="1" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <Grid Margin="16,12">
+                                <TextBlock Text="bloomingdale's loyallist" FontSize="11"
+                                           Foreground="#EDEAFF" HorizontalAlignment="Right" />
+                                <TextBlock Text="bloom" FontSize="52" FontWeight="Bold" FontStyle="Italic"
+                                           Foreground="#C9C2F2" VerticalAlignment="Center" Margin="0,4,0,0" />
+                                <StackPanel VerticalAlignment="Bottom" Spacing="4">
+                                    <TextBlock Text="00 000 000 000    0" FontSize="14"
+                                               FontFamily="Courier New" Foreground="#F2F0FF" />
+                                    <DockPanel>
+                                        <TextBlock Text="B. BEST CUSTOMER" FontSize="9" Foreground="#D9D4F5" />
+                                        <TextBlock Text="CARDHOLDER SINCE 2026" FontSize="7.5"
+                                                   Foreground="#B9B2E5" HorizontalAlignment="Right" />
+                                    </DockPanel>
+                                </StackPanel>
                             </Grid>
                         </Border>
 
-                        <!-- Empty state -->
-                        <StackPanel Grid.Row="1" IsVisible="{Binding IsEmpty}" Spacing="10"
-                                    HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <TextBlock Classes="serif" Text="Begin a sale" FontSize="30"
-                                       HorizontalAlignment="Center" />
-                            <TextBlock Text="Scan an item, or use the quick keys below" FontSize="13"
-                                       Foreground="{DynamicResource Dim}" HorizontalAlignment="Center" />
-                        </StackPanel>
+                        <!-- Loyallist key-tag card -->
+                        <Border Width="268" Height="164" CornerRadius="10"
+                                BorderBrush="#39325E" BorderThickness="1">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                                    <GradientStop Color="#8478CE" Offset="0" />
+                                    <GradientStop Color="#5C50AC" Offset="1" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <Grid Margin="16,12">
+                                <TextBlock Text="POINTS ARE A SHOPPER'S BEST FRIEND" FontSize="8.5"
+                                           Foreground="#EDEAFF" />
+                                <TextBlock Text="bloom" FontSize="52" FontWeight="Bold" FontStyle="Italic"
+                                           Foreground="#A79DE2" VerticalAlignment="Center" Margin="0,6,0,0" />
+                                <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Right" Spacing="0">
+                                    <TextBlock Text="Tell." FontSize="12" FontStyle="Italic" Foreground="#F2F0FF"
+                                               HorizontalAlignment="Right" />
+                                    <TextBlock Text="loyallist" FontSize="13" FontWeight="Bold"
+                                               Foreground="#F2F0FF" HorizontalAlignment="Right" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
 
-                        <!-- Lines -->
-                        <ScrollViewer Grid.Row="1" IsVisible="{Binding IsNotEmpty}">
+                    <!-- Every later stage: the basket -->
+                    <Grid IsVisible="{Binding ShowBasket}" RowDefinitions="Auto,*,Auto">
+
+                        <!-- Customer / loyalty header -->
+                        <Grid Grid.Row="0" IsVisible="{Binding CustomerLinked}" Margin="10,8,10,0"
+                              ColumnDefinitions="*,Auto,*" Height="58">
+                            <TextBlock Grid.Column="0" Text="{Binding CustomerName}" FontSize="17"
+                                       FontWeight="Bold" VerticalAlignment="Top" />
+                            <!-- tiny overlapping card art -->
+                            <Panel Grid.Column="1" Width="86" Height="46" VerticalAlignment="Top">
+                                <Border Width="62" Height="38" CornerRadius="4" Background="#5C50AC"
+                                        BorderBrush="#39325E" BorderThickness="1" Margin="24,8,0,0"
+                                        HorizontalAlignment="Left" VerticalAlignment="Top" />
+                                <Border Width="62" Height="38" CornerRadius="4" Background="#6A5EBE"
+                                        BorderBrush="#39325E" BorderThickness="1"
+                                        HorizontalAlignment="Left" VerticalAlignment="Top">
+                                    <TextBlock Text="bloom" FontSize="13" FontStyle="Italic" FontWeight="Bold"
+                                               Foreground="#C9C2F2" HorizontalAlignment="Center"
+                                               VerticalAlignment="Center" />
+                                </Border>
+                            </Panel>
+                            <TextBlock Grid.Column="2" Text="{Binding LoyaltyNumberDisplay}" FontSize="17"
+                                       FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Top" />
+                        </Grid>
+
+                        <!-- Item lines (+ tender lines once paid) -->
+                        <StackPanel Grid.Row="1" Margin="0,2,0,0">
+                            <Border BorderBrush="#55534A" BorderThickness="0,1,0,0" />
                             <ItemsControl ItemsSource="{Binding Lines}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="m:SaleLine">
-                                        <Button Classes="row" Classes.selected="{Binding IsSelected}"
+                                        <Button Background="Transparent" BorderThickness="0" Padding="0"
+                                                CornerRadius="0" HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Stretch"
                                                 Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).SelectLineCommand}"
                                                 CommandParameter="{Binding}">
-                                            <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1"
-                                                    Padding="24,14">
-                                                <Grid ColumnDefinitions="56,12,*,12,120,12,70,12,130">
-                                                    <TextBlock Grid.Column="0" Classes="mono dim" Text="{Binding Num}"
-                                                               FontSize="13" VerticalAlignment="Center" />
-                                                    <StackPanel Grid.Column="2" Spacing="5" VerticalAlignment="Center">
-                                                        <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="Medium" />
-                                                        <TextBlock Classes="mono dim" Text="{Binding Meta}" FontSize="11.5" />
-                                                        <Border IsVisible="{Binding HasPromo}" HorizontalAlignment="Left"
-                                                                BorderBrush="{DynamicResource Accent}" BorderThickness="1"
-                                                                CornerRadius="4" Padding="7,3">
-                                                            <TextBlock Text="{Binding Promo}" FontSize="10.5" LetterSpacing="1"
-                                                                       Foreground="{DynamicResource Accent}" />
-                                                        </Border>
-                                                    </StackPanel>
-                                                    <TextBlock Grid.Column="4" Classes="mono dim" Text="{Binding PriceDisplay}"
-                                                               FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                                                    <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6"
-                                                                HorizontalAlignment="Center" VerticalAlignment="Center">
-                                                        <Button Classes="pos stepper" Content="–"
-                                                                Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).DecrementQtyCommand}"
-                                                                CommandParameter="{Binding}" />
-                                                        <TextBlock Classes="mono" Text="{Binding Quantity}" FontSize="15"
-                                                                   MinWidth="18" TextAlignment="Center" VerticalAlignment="Center" />
-                                                        <Button Classes="pos stepper" Content="+"
-                                                                Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).IncrementQtyCommand}"
-                                                                CommandParameter="{Binding}" />
-                                                    </StackPanel>
-                                                    <TextBlock Grid.Column="8" Classes="mono" Text="{Binding AmountDisplay}"
-                                                               FontSize="16" FontWeight="Medium"
-                                                               HorizontalAlignment="Right" VerticalAlignment="Center" />
-                                                </Grid>
+                                            <Border BorderThickness="1"
+                                                    BorderBrush="{Binding IsSelected, Converter={x:Static vm:Converters.SelectedLineBrush}}"
+                                                    Padding="10,3,10,4">
+                                                <StackPanel>
+                                                    <DockPanel>
+                                                        <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="Bold" />
+                                                        <TextBlock Text="{Binding AysAmount}" FontSize="16" FontWeight="Bold"
+                                                                   HorizontalAlignment="Right" />
+                                                    </DockPanel>
+                                                    <TextBlock Text="{Binding Product.Sku}" FontSize="13.5"
+                                                               Margin="128,1,0,0" />
+                                                </StackPanel>
                                             </Border>
                                         </Button>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                        </ScrollViewer>
-                    </Grid>
-                </Border>
 
-                <!-- Quick keys tray -->
-                <Border Grid.Row="1" Background="{DynamicResource Panel}"
-                        BorderBrush="{DynamicResource Line}" BorderThickness="0,1,1,0"
-                        Padding="24,16,24,20">
-                    <StackPanel Spacing="12">
-                        <DockPanel LastChildFill="False">
-                            <TextBlock DockPanel.Dock="Left" Classes="label" Text="QUICK KEYS · LEVEL 3" LetterSpacing="1.7" />
-                            <TextBlock DockPanel.Dock="Right" Text="{Binding LineCountLabel}" FontSize="11.5"
-                                       Foreground="{DynamicResource Dim}" />
-                        </DockPanel>
-                        <ItemsControl ItemsSource="{Binding QuickKeys}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <UniformGrid Columns="5" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="m:Product">
-                                    <Button Classes="pos key" Height="78" Margin="0,0,10,0"
-                                            Padding="11" HorizontalAlignment="Stretch"
-                                            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
-                                            Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).AddItemCommand}"
-                                            CommandParameter="{Binding}">
-                                        <DockPanel>
-                                            <TextBlock DockPanel.Dock="Top" Text="{Binding Name}" FontSize="13"
-                                                       FontWeight="Medium" LineHeight="16" TextWrapping="Wrap" />
-                                            <TextBlock Classes="mono dim" Text="{Binding PriceDisplay}" FontSize="12"
-                                                       VerticalAlignment="Bottom" />
-                                        </DockPanel>
-                                    </Button>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-                </Border>
-            </Grid>
-
-            <!-- Right rail -->
-            <Border Grid.Column="1" Background="{DynamicResource Panel}">
-                <Grid RowDefinitions="Auto,Auto,*,Auto">
-
-                    <!-- Customer strip -->
-                    <Button Grid.Row="0" Classes="row" Command="{Binding OpenCustomerCommand}">
-                        <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" Padding="20,16">
-                            <DockPanel>
-                                <Border DockPanel.Dock="Left" Width="42" Height="42" CornerRadius="21"
-                                        BorderBrush="{DynamicResource Accent}" BorderThickness="1" Margin="0,0,14,0">
-                                    <TextBlock Classes="serif" Text="{Binding CustomerInitials}" FontSize="18"
-                                               Foreground="{DynamicResource Accent}"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                                <TextBlock DockPanel.Dock="Right" Text="{Binding CustomerAction}" FontSize="11"
-                                           LetterSpacing="1.3" Foreground="{DynamicResource Accent}"
-                                           VerticalAlignment="Center" />
-                                <StackPanel Spacing="4" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding CustomerName}" FontSize="15" FontWeight="Medium" />
-                                    <TextBlock Text="{Binding CustomerMeta}" FontSize="11.5"
-                                               Foreground="{DynamicResource Dim}" />
-                                </StackPanel>
-                            </DockPanel>
-                        </Border>
-                    </Button>
-
-                    <!-- Totals -->
-                    <Border Grid.Row="1" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1"
-                            Padding="20,20,20,18">
-                        <StackPanel Spacing="11">
-                            <DockPanel>
-                                <TextBlock Text="Subtotal" FontSize="14" Foreground="{DynamicResource Dim}" />
-                                <TextBlock Classes="mono" Text="{Binding SubtotalDisplay}" FontSize="14"
-                                           HorizontalAlignment="Right" />
-                            </DockPanel>
-                            <DockPanel>
-                                <TextBlock Text="{Binding DiscountLabel}" FontSize="14" Foreground="{DynamicResource Dim}" />
-                                <TextBlock Classes="mono" Text="{Binding DiscountDisplay}" FontSize="14"
-                                           Foreground="{DynamicResource Accent}" HorizontalAlignment="Right" />
-                            </DockPanel>
-                            <DockPanel>
-                                <TextBlock Text="Sales tax · 8.875%" FontSize="14" Foreground="{DynamicResource Dim}" />
-                                <TextBlock Classes="mono" Text="{Binding TaxDisplay}" FontSize="14"
-                                           HorizontalAlignment="Right" />
-                            </DockPanel>
-                            <Border Height="1" Background="{DynamicResource Line}" Margin="0,3" />
-                            <DockPanel>
-                                <TextBlock Text="TOTAL DUE" Classes="label" FontSize="11" LetterSpacing="2"
-                                           VerticalAlignment="Bottom" Margin="0,0,0,6" />
-                                <TextBlock Classes="mono" Text="{Binding TotalDisplay}" FontSize="34"
-                                           FontWeight="SemiBold" LetterSpacing="-0.7" HorizontalAlignment="Right" />
-                            </DockPanel>
-                            <StackPanel Spacing="8" Margin="0,6,0,0" IsVisible="{Binding HasPaid}">
-                                <ItemsControl ItemsSource="{Binding Payments}">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <StackPanel Spacing="8" />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="m:Payment">
+                            <!-- Tender lines (Complete stage) -->
+                            <ItemsControl ItemsSource="{Binding Payments}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="m:Payment">
+                                        <StackPanel Margin="10,2,10,0">
+                                            <Border BorderBrush="#55534A" BorderThickness="0,1,0,0"
+                                                    Margin="-10,0,-10,3" />
                                             <DockPanel>
-                                                <TextBlock Text="{Binding Label}" FontSize="13"
-                                                           Foreground="{DynamicResource Pos}" />
-                                                <TextBlock Classes="mono" Text="{Binding AmountDisplay}" FontSize="13"
-                                                           Foreground="{DynamicResource Pos}" HorizontalAlignment="Right" />
+                                                <TextBlock Text="{Binding Label}" FontSize="16" FontWeight="Bold" />
+                                                <TextBlock Text="{Binding AysAmount}" FontSize="16" FontWeight="Bold"
+                                                           HorizontalAlignment="Right" />
                                             </DockPanel>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                <DockPanel>
-                                    <TextBlock Text="Balance" FontSize="14" FontWeight="SemiBold" />
-                                    <TextBlock Classes="mono" Text="{Binding BalanceDisplay}" FontSize="14"
-                                               FontWeight="SemiBold" HorizontalAlignment="Right" />
-                                </DockPanel>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <!-- Bottom: purch items / coupons + totals -->
+                        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+                            <StackPanel Grid.Column="0" Margin="10,0,0,0" Spacing="4"
+                                        VerticalAlignment="Top">
+                                <Border BorderBrush="#55534A" BorderThickness="0,1,0,0"
+                                        Margin="-10,0,0,4" />
+                                <TextBlock Text="{Binding PurchItemsLabel}" FontSize="15.5" />
+                                <TextBlock Text="{Binding CouponsLabel}" FontSize="15.5"
+                                           IsVisible="{Binding ShowCoupons}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Margin="0,4,14,0" Spacing="3"
+                                        IsVisible="{Binding ShowTotals}">
+                                <Grid ColumnDefinitions="150,110">
+                                    <TextBlock Text="Subtotal:" FontSize="15.5" FontWeight="Bold"
+                                               HorizontalAlignment="Right" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SubtotalDisplay}" FontSize="15.5"
+                                               FontWeight="Bold" HorizontalAlignment="Right" />
+                                </Grid>
+                                <Grid ColumnDefinitions="150,110">
+                                    <TextBlock Text="Tax:" FontSize="15.5" FontWeight="Bold"
+                                               HorizontalAlignment="Right" />
+                                    <TextBlock Grid.Column="1" Text="{Binding TaxDisplay}" FontSize="15.5"
+                                               FontWeight="Bold" HorizontalAlignment="Right" />
+                                </Grid>
+                                <Grid ColumnDefinitions="150,110">
+                                    <TextBlock Text="Total:" FontSize="15.5" FontWeight="Bold"
+                                               HorizontalAlignment="Right" />
+                                    <TextBlock Grid.Column="1" Text="{Binding TotalDisplay}" FontSize="15.5"
+                                               FontWeight="Bold" HorizontalAlignment="Right" />
+                                </Grid>
+                                <Grid ColumnDefinitions="150,110">
+                                    <TextBlock Text="Amount Due:" FontSize="15.5" FontWeight="Bold"
+                                               HorizontalAlignment="Right" />
+                                    <TextBlock Grid.Column="1" Text="{Binding AmountDueDisplay}" FontSize="15.5"
+                                               FontWeight="Bold" HorizontalAlignment="Right" />
+                                </Grid>
+                            </StackPanel>
+                            <!-- Complete stage shows just the subtotal -->
+                            <StackPanel Grid.Column="1" Margin="0,4,14,0"
+                                        IsVisible="{Binding IsCompleteStage}">
+                                <Grid ColumnDefinitions="150,110">
+                                    <TextBlock Text="Subtotal:" FontSize="15.5" FontWeight="Bold"
+                                               HorizontalAlignment="Right" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SubtotalDisplay}" FontSize="15.5"
+                                               FontWeight="Bold" HorizontalAlignment="Right" />
+                                </Grid>
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+                </Panel>
+            </Border>
+
+            <!-- ..... Right panel: prompts ..... -->
+            <Border Grid.Column="1" Background="#F9F7DF" BorderBrush="#55534A" BorderThickness="0,1,1,1">
+                <DockPanel Margin="12,8,12,8">
+
+                    <!-- Bottom F-key legends -->
+                    <StackPanel DockPanel.Dock="Bottom" Spacing="2">
+                        <DockPanel IsVisible="{Binding IsLoyaltyStage}">
+                            <TextBlock Classes="legend" Text="F6&#160;&#160;- Bypass" />
+                            <TextBlock Classes="legend" Text="F3&#160;&#160;- Cancel Transaction"
+                                       HorizontalAlignment="Right" />
+                        </DockPanel>
+                        <StackPanel IsVisible="{Binding IsScanStage}" Spacing="2">
+                            <TextBlock Classes="legend" Text="F3&#160;&#160;&#160;&#160;&#160;&#160;- Cancel Transaction" />
+                            <TextBlock Classes="legend" Text="Delete&#160;- Delete Selected Item" />
+                            <TextBlock Classes="legend" IsVisible="{Binding HasItems}"
+                                       Text="F8&#160;&#160;&#160;&#160;&#160;&#160;- Suspend Transaction" />
+                        </StackPanel>
+                        <StackPanel IsVisible="{Binding IsTenderSelectStage}" Spacing="2">
+                            <TextBlock Classes="legend" Text="F3&#160;&#160;&#160;&#160;- Cancel Transaction" />
+                            <TextBlock Classes="legend" Text="Esc&#160;&#160;- Return to Merchandise Section" />
+                            <TextBlock Classes="legend" Text="F8&#160;&#160;&#160;&#160;- Suspend Transaction" />
+                        </StackPanel>
+                        <StackPanel IsVisible="{Binding IsCashStage}" Spacing="2">
+                            <TextBlock Classes="legend" Text="F3&#160;&#160;&#160;- Cancel Transaction" />
+                            <TextBlock Classes="legend" Text="Esc&#160;- Change Form of Payment" />
+                        </StackPanel>
+                        <StackPanel IsVisible="{Binding IsCardStage}" Spacing="2">
+                            <TextBlock Classes="legend" Text="Esc&#160;- Change Form of Payment" />
+                            <TextBlock Classes="legend" Text="F3&#160;&#160;&#160;- Cancel Transaction" />
+                        </StackPanel>
+                        <TextBlock Classes="legend" IsVisible="{Binding IsSignatureStage}"
+                                   Text="F3&#160;- Cancel Transaction" />
+                    </StackPanel>
+
+                    <!-- Stage prompts -->
+                    <Panel>
+
+                        <!-- Loyalty -->
+                        <StackPanel IsVisible="{Binding IsLoyaltyStage}" Spacing="14">
+                            <TextBlock Classes="prompt" TextWrapping="Wrap">
+                                <Run>Ask customer to</Run> <Run FontWeight="Bold">Insert</Run>
+                                <Run>or</Run> <Run FontWeight="Bold">Slide Bloomingdale's Card</Run>
+                                <Run>or present</Run> <Run FontWeight="Bold">Bloomingdale's Pay barcode</Run>
+                                <Run>in the Bloomingdale's app on their mobile device or present their</Run>
+                                <Run FontWeight="Bold">Loyallist Key Tag</Run><Run>.</Run>
+                            </TextBlock>
+                            <StackPanel Spacing="6">
+                                <TextBlock Classes="prompt advise" Text="Advise customer this is their opportunity to:" />
+                                <TextBlock Classes="prompt" Text="•  View available offers" Margin="26,0,0,0"
+                                           FontWeight="Bold" />
+                            </StackPanel>
+                            <TextBlock Classes="prompt" TextWrapping="Wrap">
+                                <Run>If card is unreadable, please press</Run> <Run FontWeight="Bold">T8</Run>
+                                <Run>to key-in at the</Run> <Run FontWeight="Bold">Signature Pad</Run>
+                            </TextBlock>
+                            <TextBlock Classes="prompt" TextWrapping="Wrap">
+                                <Run>Press</Run> <Run FontWeight="Bold">T2</Run>
+                                <Run>to Enroll the customer in the Loyallist program.</Run>
+                            </TextBlock>
+                            <TextBlock Classes="prompt" TextWrapping="Wrap" Foreground="#4E6E00"
+                                       FontWeight="Bold" Margin="0,10,0,0">
+                                <Run>NOTE: T7 Pay By Link will put the register into Send Merchandise mode</Run>
+                            </TextBlock>
+                        </StackPanel>
+
+                        <!-- Scan -->
+                        <StackPanel IsVisible="{Binding IsScanStage}" Spacing="14">
+                            <TextBlock Classes="prompt" TextWrapping="Wrap">
+                                <Run FontWeight="Bold">Scan</Run> <Run>merchandise or coupons.</Run>
+                            </TextBlock>
+                            <TextBlock Classes="prompt" TextWrapping="Wrap">
+                                <Run>If unreadable, input UPC or Dept/CI and press</Run>
+                                <Run FontWeight="Bold">Enter</Run><Run>.</Run>
+                            </TextBlock>
+                            <Border Background="#A6D9C3" BorderBrush="#7FB8A4" BorderThickness="1"
+                                    Width="330" Height="24" HorizontalAlignment="Left" Margin="0,14,0,0">
+                                <TextBlock Text="{Binding ScanEntryDisplay}" FontSize="15"
+                                           VerticalAlignment="Center" Margin="6,0" />
+                            </Border>
+                        </StackPanel>
+
+                        <!-- Checkout / More payment methods -->
+                        <StackPanel IsVisible="{Binding IsTenderSelectStage}" Spacing="16">
+                            <TextBlock Classes="prompt" TextWrapping="Wrap">
+                                <Run>Press</Run> <Run FontWeight="Bold">T1</Run> <Run>for</Run>
+                                <Run FontWeight="Bold">Bloomingdale's Card / Bloomingdale's Pay</Run>
+                                <Run>or press</Run> <Run FontWeight="Bold">T8</Run> <Run>to view</Run>
+                                <Run FontWeight="Bold">More Payment Methods</Run><Run>.</Run>
+                            </TextBlock>
+                            <TextBlock Classes="prompt" TextWrapping="Wrap">
+                                <Run>Remind customer that they will</Run>
+                                <Run FontWeight="Bold">earn more points</Run>
+                                <Run>and benefits by using their</Run>
+                                <Run FontWeight="Bold">Bloomingdale's Card</Run><Run>!</Run>
+                            </TextBlock>
+                        </StackPanel>
+
+                        <!-- Cash -->
+                        <StackPanel IsVisible="{Binding IsCashStage}" Spacing="14">
+                            <TextBlock Classes="prompt" TextWrapping="Wrap">
+                                <Run>Input cash amount and press</Run>
+                                <Run FontWeight="Bold">Enter</Run><Run>.</Run>
+                            </TextBlock>
+                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="130,50,0,0">
+                                <TextBlock Text="$" FontSize="16" FontWeight="Bold" VerticalAlignment="Center" />
+                                <Border Background="#FDFCF5" BorderBrush="#55534A" BorderThickness="1"
+                                        Width="230" Height="24">
+                                    <TextBlock Text="{Binding CashEntryDisplay}" FontSize="15"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Margin="0,0,6,0" />
+                                </Border>
                             </StackPanel>
                         </StackPanel>
-                    </Border>
 
-                    <!-- Function pad -->
-                    <Grid Grid.Row="2" Margin="20,18"
-                          ColumnDefinitions="*,10,*" RowDefinitions="64,10,64,10,64,10,64,10,64"
-                          VerticalAlignment="Top">
-                        <Button Grid.Row="0" Grid.Column="0" Classes="pos key" Padding="14,0"
-                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                Command="{Binding ItemSearchCommand}">
-                            <StackPanel Spacing="4" VerticalAlignment="Center">
-                                <TextBlock Text="Item search" FontSize="14" FontWeight="Medium" />
-                                <TextBlock Text="Catalogue · F2" FontSize="10.5" LetterSpacing="0.6"
-                                           Foreground="{DynamicResource Dim}" />
-                            </StackPanel>
-                        </Button>
-                        <Button Grid.Row="0" Grid.Column="2" Classes="pos key" Padding="14,0"
-                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                Command="{Binding OpenPromosCommand}">
-                            <StackPanel Spacing="4" VerticalAlignment="Center">
-                                <TextBlock Text="Promotions" FontSize="14" FontWeight="Medium" />
-                                <TextBlock Text="{Binding PromoHint}" FontSize="10.5" LetterSpacing="0.6"
-                                           Foreground="{DynamicResource Dim}" />
-                            </StackPanel>
-                        </Button>
-                        <Button Grid.Row="2" Grid.Column="0" Classes="pos key" Padding="14,0"
-                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                Command="{Binding OpenCustomerCommand}">
-                            <StackPanel Spacing="4" VerticalAlignment="Center">
-                                <TextBlock Text="Customer" FontSize="14" FontWeight="Medium" />
-                                <TextBlock Text="{Binding CustomerHint}" FontSize="10.5" LetterSpacing="0.6"
-                                           Foreground="{DynamicResource Dim}" />
-                            </StackPanel>
-                        </Button>
-                        <Button Grid.Row="2" Grid.Column="2" Classes="pos key" Padding="14,0"
-                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                Command="{Binding PriceOverrideCommand}">
-                            <StackPanel Spacing="4" VerticalAlignment="Center">
-                                <TextBlock Text="Price override" FontSize="14" FontWeight="Medium" />
-                                <TextBlock Text="Manager · F6" FontSize="10.5" LetterSpacing="0.6"
-                                           Foreground="{DynamicResource Dim}" />
-                            </StackPanel>
-                        </Button>
-                        <Button Grid.Row="4" Grid.Column="0" Classes="pos key" Padding="14,0"
-                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                Command="{Binding GiftOptionsCommand}">
-                            <StackPanel Spacing="4" VerticalAlignment="Center">
-                                <TextBlock Text="Gift options" FontSize="14" FontWeight="Medium" />
-                                <TextBlock Text="Box, wrap, message" FontSize="10.5" LetterSpacing="0.6"
-                                           Foreground="{DynamicResource Dim}" />
-                            </StackPanel>
-                        </Button>
-                        <Button Grid.Row="4" Grid.Column="2" Classes="pos key" Padding="14,0"
-                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                Command="{Binding ShipFromStoreCommand}">
-                            <StackPanel Spacing="4" VerticalAlignment="Center">
-                                <TextBlock Text="Ship from store" FontSize="14" FontWeight="Medium" />
-                                <TextBlock Text="Endless aisle" FontSize="10.5" LetterSpacing="0.6"
-                                           Foreground="{DynamicResource Dim}" />
-                            </StackPanel>
-                        </Button>
-                        <Button Grid.Row="6" Grid.Column="0" Classes="pos key" Padding="14,0"
-                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                Command="{Binding VoidLineCommand}">
-                            <StackPanel Spacing="4" VerticalAlignment="Center">
-                                <TextBlock Text="Void line" FontSize="14" FontWeight="Medium"
-                                           Foreground="{DynamicResource Danger}" />
-                                <TextBlock Text="Removes selection" FontSize="10.5" LetterSpacing="0.6"
-                                           Foreground="{DynamicResource Dim}" />
-                            </StackPanel>
-                        </Button>
-                        <Button Grid.Row="6" Grid.Column="2" Classes="pos key" Padding="14,0"
-                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                Command="{Binding SuspendSaleCommand}">
-                            <StackPanel Spacing="4" VerticalAlignment="Center">
-                                <TextBlock Text="Suspend sale" FontSize="14" FontWeight="Medium"
-                                           Foreground="{DynamicResource Dim}" />
-                                <TextBlock Text="Recall at any till" FontSize="10.5" LetterSpacing="0.6"
-                                           Foreground="{DynamicResource Dim}" />
-                            </StackPanel>
-                        </Button>
-                        <Button Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="3" Classes="pos key"
-                                Padding="14,0" HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Left"
-                                IsEnabled="{Binding IsTerminalConnected}"
-                                Command="{Binding SendToTerminalCommand}">
-                            <StackPanel Spacing="4" VerticalAlignment="Center">
-                                <TextBlock Text="Send to terminal" FontSize="14" FontWeight="Medium" />
-                                <TextBlock Text="Mirror basket on customer display" FontSize="10.5"
-                                           LetterSpacing="0.6" Foreground="{DynamicResource Dim}" />
-                            </StackPanel>
-                        </Button>
-                    </Grid>
+                        <!-- Card / Bloomingdale's Pay at the customer terminal -->
+                        <StackPanel IsVisible="{Binding IsCardStage}" Spacing="16">
+                            <TextBlock Classes="prompt" TextWrapping="Wrap">
+                                <Run>Have customer</Run> <Run FontWeight="Bold">Insert</Run>
+                                <Run>or</Run> <Run FontWeight="Bold">Slide Bloomingdale's Card</Run>
+                                <Run>at the Signature Pad OR present</Run>
+                                <Run FontWeight="Bold">Bloomingdale's Pay barcode</Run>
+                                <Run>in the Bloomingdale's app on their mobile device.</Run>
+                            </TextBlock>
+                            <TextBlock Classes="prompt" TextWrapping="Wrap">
+                                <Run>If card is unreadable, please press</Run> <Run FontWeight="Bold">T8</Run>
+                                <Run>to key-in at the</Run> <Run FontWeight="Bold">Signature Pad</Run>
+                            </TextBlock>
+                        </StackPanel>
 
-                    <!-- Tender CTA -->
-                    <Button Grid.Row="3" Classes="cta" Height="74" Margin="20,0,20,20"
-                            Padding="24,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                            Command="{Binding OpenTenderCommand}">
-                        <DockPanel VerticalAlignment="Center">
-                            <TextBlock Text="{Binding TenderLabel}" FontSize="19" FontWeight="SemiBold"
-                                       LetterSpacing="0.8" VerticalAlignment="Center" />
-                            <TextBlock Classes="mono" Text="{Binding BalanceDisplay}" FontSize="19"
-                                       FontWeight="SemiBold" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                        </DockPanel>
-                    </Button>
-                </Grid>
+                        <!-- Signature wait -->
+                        <StackPanel IsVisible="{Binding IsSignatureStage}" Spacing="30">
+                            <TextBlock Classes="prompt" Text="Waiting for customer to sign..." />
+                            <TextBlock Classes="prompt" TextWrapping="Wrap" Margin="40,20,0,0"
+                                       Text="{Binding SignatureCountdownText}" />
+                        </StackPanel>
+
+                        <!-- Complete -->
+                        <TextBlock IsVisible="{Binding IsCompleteStage}"
+                                   Text="Updating Loyallist Program" FontSize="17" FontWeight="Bold"
+                                   HorizontalAlignment="Center" Margin="0,180,0,0" />
+                    </Panel>
+                </DockPanel>
+            </Border>
+
+            <!-- "Purchase Completed" banner across the panels -->
+            <Border Grid.ColumnSpan="2" IsVisible="{Binding IsCompleteStage}"
+                    Background="#F2DCB4" BorderBrush="#8A8064" BorderThickness="1"
+                    Width="700" Height="80" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Margin="0,120,0,0">
+                <TextBlock Text="Purchase Completed" FontSize="18" FontWeight="Bold"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Border>
         </Grid>
+
+        <!-- ===== T1–T8 key grid ===== -->
+        <ItemsControl Grid.Row="2" ItemsSource="{Binding TKeys}" Margin="8,2,8,2">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <UniformGrid Columns="4" Rows="2" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:TKey">
+                    <Button Classes="tkey" Margin="5,4"
+                            Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).PressTKeyCommand}"
+                            CommandParameter="{Binding}">
+                        <Border Margin="3" BorderThickness="1"
+                                BorderBrush="{Binding IsEnabled, Converter={x:Static vm:Converters.TKeyOutlineBrush}}">
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,0"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Prefix}" FontSize="17" FontWeight="Bold"
+                                           VerticalAlignment="Center"
+                                           Foreground="{Binding IsEnabled, Converter={x:Static vm:Converters.TKeyTextBrush}}" />
+                                <TextBlock Text="{Binding Label}" FontSize="16" FontWeight="Bold"
+                                           TextWrapping="Wrap" MaxWidth="270" VerticalAlignment="Center"
+                                           Foreground="{Binding IsEnabled, Converter={x:Static vm:Converters.TKeyTextBrush}}" />
+                            </StackPanel>
+                        </Border>
+                    </Button>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- ===== Status bar ===== -->
+        <Border Grid.Row="3" Background="#D9D4C0" BorderBrush="#8A867A" BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto" Margin="6,2">
+                <StackPanel Grid.Column="0" Margin="0,0,26,0">
+                    <TextBlock Text="72027959" FontSize="11.5" />
+                    <TextBlock Text="PS200" FontSize="11.5" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="Open" FontSize="12" VerticalAlignment="Center"
+                           Margin="0,0,40,0" />
+                <TextBlock Grid.Column="2" Text="{Binding Status}" FontSize="12"
+                           VerticalAlignment="Center" HorizontalAlignment="Center" />
+                <TextBlock Grid.Column="3" Text="Normal" FontSize="12" VerticalAlignment="Center"
+                           Margin="0,0,40,0" />
+                <StackPanel Grid.Column="4" Margin="0,0,32,0" HorizontalAlignment="Center">
+                    <TextBlock Text="AYS Register" FontSize="11.5" HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding OnlineLabel}" FontSize="11.5" HorizontalAlignment="Center" />
+                </StackPanel>
+                <TextBlock Grid.Column="5" Text="ISP A" FontSize="12" VerticalAlignment="Center"
+                           Margin="0,0,32,0" />
+                <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="16"
+                            VerticalAlignment="Center" Margin="0,0,8,0">
+                    <TextBlock Text="{Binding DateText}" FontSize="12" />
+                    <TextBlock Text="{Binding TimeText}" FontSize="12" />
+                </StackPanel>
+            </Grid>
+        </Border>
     </Grid>
 </UserControl>

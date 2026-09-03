@@ -34,4 +34,7 @@ public partial class SaleLine : ObservableObject
 
     public string AmountDisplay => Money.Format(Amount);
     public bool HasPromo => Promo is not null;
+
+    /// <summary>The AYS prints bare numbers with no currency sign.</summary>
+    public string AysAmount => Amount.ToString("N2");
 }

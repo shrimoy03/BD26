@@ -5,11 +5,29 @@ Windows all-in-one at the counter and sends payment commands over the local
 network to the Android customer-facing app (`../winkpos`) which embeds WinkPay.
 
 Built with **Avalonia UI on .NET 10** — a native desktop app that develops and
-runs on macOS and publishes to a self-contained Windows executable. The UI
-implements the register design handoff, styled with the Bloomingdale's Figma assets
-(wordmark, Loyallist art, catalog items) (1600×1000 register canvas,
-dark + light themes, basket / quick keys / customer lookup / promotions /
-split tender / sale complete).
+runs on macOS and publishes to a self-contained Windows executable. The UI is a
+replica of the real Bloomingdale's **AYS register** (from the "BLM pos flow"
+deck, build 2026.6.1_1112): left basket panel, right prompt panel, the red
+T1–T8 key grid, and the bottom status bar, on a fixed 1600×1000 canvas.
+
+The register is a stage machine that walks the store flow screen for screen
+(`ViewModels/MainViewModel.cs`, `RegisterStage`):
+
+1. **Loyalty** — "Ask customer to Insert or Slide Bloomingdale's Card…";
+   T1 Lookup Loyalty Number links `B.TEST · XXXXXXXXX8585`, F6 bypasses.
+2. **Scan** — type/scan a UPC and press Enter (`3145891313406` Chanel Beaute
+   50.00, `3365440057838` Ysl Cosmetics 30.00); Delete voids the selected
+   line; T1 Checkout.
+3. **Checkout** — T1 Bloomingdale's Card / Bloomingdale's Pay,
+   T8 More Payment Methods; Esc returns to merchandise.
+4. **More payments** — T2 bankcard (EMV), T3 Cash, etc.
+5. **Cash** — key the amount, Enter tenders it.
+   **Card/Pay** — hands the sale to the customer terminal (below); standalone
+   it simulates card-in then the 89-second signature screen.
+6. **Purchase Completed** — banner + "Updating Loyallist Program", then the
+   register returns to the loyalty prompt on its own.
+
+F3 cancels the transaction from any stage, F8 suspends (mock), F9 opens setup.
 
 ## Development (macOS)
 
@@ -52,12 +70,16 @@ Every frame is one JSON object (camelCase). See `Models/PosMessages.cs`.
 | Android → POS | `PAYMENT_RESULT` | `orderId`, `status` (`APPROVED` \| `DECLINED` \| `CANCELLED`), `amountCents?`, `method?` (shown as the tender label), `reason?` (shown on decline) |
 
 Behavior on the register:
-- The **Credit / debit card** tender sends `START_PAYMENT` for the outstanding
-  balance when a terminal is connected (tile hint switches to
-  "Customer terminal · chip, tap, or Wink"); with no terminal connected it
-  falls back to an instant mock approval so the demo still works standalone.
-- While awaiting, the tender tiles disable and a Cancel banner appears;
-  Cancel sends `CANCEL_PAYMENT`.
+- **T1 Bloomingdale's Card / Bloomingdale's Pay** (checkout) sends
+  `START_PAYMENT` with `method: BD_LOYALLIST` — the PxRetailer payment-options
+  page where the customer can pick face/palm (WinkPay). **T2 Bankcard** sends
+  `method: CARD` for straight EMV. With no terminal connected, the card flow is
+  simulated (card-in → signature screen) so the demo still works standalone.
+- The basket is mirrored to the terminal (`DISPLAY_CART`) on every change.
+- Esc during the card stage sends `CANCEL_PAYMENT` and returns to checkout;
+  F3 cancels the whole transaction.
+- A `TENDER_SELECTED` event from the terminal (customer taps face/palm/card on
+  the PxRetailer form) pulls the register into the card stage by itself.
 - One client at a time; a new connection replaces the old one.
 
 ### Simulating the Android app
@@ -70,7 +92,7 @@ Connects to the register and auto-approves any `START_PAYMENT` after 1.5 s.
 
 ## Setup screen (per-register configuration)
 
-Press **F9**, or click the terminal pill in the header, to open Terminal setup.
+Press **F9** to open Terminal setup.
 This is the supported way to configure a register — no environment variables and
 no rebuild, so the same published build drops onto every store machine:
 

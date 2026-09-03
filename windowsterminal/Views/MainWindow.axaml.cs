@@ -21,7 +21,7 @@ public partial class MainWindow : Window
             WindowState = WindowState.FullScreen;
         }
 
-        // Scan-gun / keyboard SKU entry feeds the entry bar.
+        // Scan-gun / keyboard entry feeds the UPC and cash-amount buffers.
         AddHandler(TextInputEvent, OnTextInput, handledEventsToo: false);
         AddHandler(KeyDownEvent, OnKeyDownHandler, handledEventsToo: false);
 
@@ -32,12 +32,15 @@ public partial class MainWindow : Window
         }
 
         // Terminal integration test: waits for the customer terminal to connect,
-        // starts a card tender, captures the result, and exits.
+        // walks the AYS flow into a card tender, captures the result, and exits.
         if (Environment.GetEnvironmentVariable("POS_TERMINAL_TEST_DIR") is { Length: > 0 } testDir)
         {
             Opened += (_, _) => _ = TestTerminalAsync(testDir);
         }
     }
+
+    private void PressT(MainViewModel vm, int index) =>
+        vm.PressTKeyCommand.Execute(vm.TKeys[index - 1]);
 
     private async Task TestTerminalAsync(string dir)
     {
@@ -55,9 +58,11 @@ public partial class MainWindow : Window
         // Give the simulated Android client time to connect.
         for (var i = 0; i < 40 && !vm.IsTerminalConnected; i++) await Task.Delay(250);
 
-        vm.OpenTenderCommand.Execute(null);
-        await Shot("t1-tender-connected");
-        vm.TenderCardCommand.Execute(null);
+        PressT(vm, 1);                  // loyalty lookup → scan
+        vm.ScanUpc("3145891313406");    // Chanel Beaute
+        PressT(vm, 1);                  // checkout
+        await Shot("t1-checkout-connected");
+        PressT(vm, 1);                  // Bloomingdale's Card/Pay → START_PAYMENT
         await Shot("t2-awaiting-terminal");
         for (var i = 0; i < 40 && vm.IsAwaitingTerminal; i++) await Task.Delay(250);
         await Shot("t3-terminal-result");
@@ -77,31 +82,37 @@ public partial class MainWindow : Window
             rtb.Save(Path.Combine(dir, name + ".png"));
         }
 
-        await Task.Delay(1000);
-        await Shot("01-register-dark");
-        vm.OpenCustomerCommand.Execute(null);
-        await Shot("02-customer-dark");
-        vm.PickCustomerCommand.Execute(vm.Customers[0]);
-        vm.OpenPromosCommand.Execute(null);
-        await Shot("03-promos-dark");
-        vm.TogglePromoCommand.Execute(vm.Promos[0]);
-        vm.CloseOverlayCommand.Execute(null);
-        vm.OpenTenderCommand.Execute(null);
-        await Shot("04-tender-dark");
-        vm.TenderCashCommand.Execute(null);
-        await Shot("05-tender-paid-dark");
-        vm.FinishCommand.Execute(null);
-        await Shot("06-done-dark");
+        await Task.Delay(800);
+
+        // Cash flow, matching the deck slide for slide.
+        await Shot("01-loyalty");
+        PressT(vm, 1);                  // lookup loyalty → B.TEST linked
+        await Shot("02-scan-empty");
+        vm.ScanUpc("3145891313406");    // Chanel Beaute 50.00
+        await Shot("03-scan-item");
+        PressT(vm, 1);                  // checkout
+        await Shot("04-checkout");
+        PressT(vm, 8);                  // more payment methods
+        await Shot("05-more-payments");
+        PressT(vm, 3);                  // cash
+        foreach (var c in "5083") vm.EntryChar(c);
+        await Shot("06-cash");
+        vm.EntrySubmit();
+        await Shot("07-complete");
+
+        // Card flow (loyalty bypassed, like the deck's YSL sale).
         vm.NewSaleCommand.Execute(null);
-        vm.ToggleThemeCommand.Execute(null);
-        await Shot("07-register-light-empty");
-        vm.AddItemCommand.Execute(vm.QuickKeys[1]);
-        vm.AddItemCommand.Execute(vm.QuickKeys[2]);
-        await Shot("08-register-light");
+        vm.BypassCommand.Execute(null);
+        vm.ScanUpc("3365440057838");    // Ysl Cosmetics 30.00
+        PressT(vm, 1);                  // checkout
+        PressT(vm, 1);                  // Bloomingdale's Card/Pay
+        await Shot("08-card-tender");
+        for (var i = 0; i < 30 && vm.Stage != RegisterStage.SignatureWait; i++) await Task.Delay(250);
+        await Shot("09-signature");
+
+        vm.NewSaleCommand.Execute(null);
         vm.OpenSetupCommand.Execute(null);
-        await Shot("09-setup-light");
-        vm.ToggleThemeCommand.Execute(null);
-        await Shot("10-setup-dark");
+        await Shot("10-setup");
         Environment.Exit(0);
     }
 
@@ -110,7 +121,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// The scan-gun handlers are window-wide, so they would otherwise swallow
     /// every keystroke typed into the setup screen's fields — and Enter would
-    /// submit a bogus SKU instead of the IP being entered.
+    /// submit a bogus UPC instead of the IP being entered.
     /// </summary>
     private bool IsTypingInField() => FocusManager?.GetFocusedElement() is TextBox;
 

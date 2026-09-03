@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
-using Avalonia;
-using Avalonia.Styling;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -13,44 +11,54 @@ using MerchantTerminal.Services;
 
 namespace MerchantTerminal.ViewModels;
 
-public enum Overlay
+/// <summary>
+/// The screens of the AYS register, in the order the BLM POS flow deck walks
+/// them: loyalty prompt → merchandise scan → checkout → (more payments) →
+/// tender execution → purchase complete.
+/// </summary>
+public enum RegisterStage
 {
-    None,
-    Customer,
-    Promos,
-    Tender,
-    Done,
-    Setup,
+    Loyalty,
+    Scan,
+    Checkout,
+    MorePayments,
+    CashTender,
+    CardTender,
+    SignatureWait,
+    Complete,
+}
+
+/// <summary>One of the eight T-keys under the screen. Blank label = idle key.</summary>
+public sealed record TKey(int Index, string Label, bool IsEnabled)
+{
+    public string Prefix => $"T{Index}";
+    public bool HasLabel => Label.Length > 0;
 }
 
 public partial class MainViewModel : ViewModelBase
 {
-    private const decimal TaxRate = 0.08875m;
+    // The store 59 test register rings 50.00 → 0.83 tax; match the deck.
+    private const decimal TaxRate = 0.0166m;
+    private const string BuildLabel = "Build 2026.6.1_1112";
 
     private static readonly IReadOnlyList<Product> Catalog = new List<Product>
     {
-        new("5901-0170", "Valentino Donna Born In Roma Eau de Parfum", "Beauty", 170m),
-        new("8842-0299", "Diamond Stud Earrings (1/3 ct. t.w.), 14k White Gold", "Fine Jewelry", 299m),
-        new("7712-0149", "The Sak Leather Crossbody", "Handbags", 149m),
-        new("3310-1290", "Cashmere Wrap Coat", "Designer Ready-to-Wear", 1290m),
-        new("0001-0038", "Little Brown Bag Tote", "Bloomingdale's Exclusives", 38m),
-    };
-
-    private static readonly IReadOnlyList<PromoDef> PromoDefs = new List<PromoDef>
-    {
-        new("loyal10", "Loyallist · 10% off select items", "Auto-qualified · with your Bloomingdale's Loyallist card", 0.10m, null, "Beauty", "Loyallist 10%"),
-        new("rewards", "Loyallist Rewards redemption", "Requires linked Loyallist member · $10.00 available", null, 10m, "*", "Rewards $10"),
-        new("jewel", "Fine Jewelry private event · $50 off $250", "Manager approval · one per transaction", null, 50m, "Fine Jewelry", "Private event"),
-        new("emp", "Associate discount · 20%", "Employee 44182 · excludes fine jewelry", 0.20m, null, "none", "Associate"),
+        new("3145891313406", "Chanel Beaute", "Beauty", 50m),
+        new("3365440057838", "Ysl Cosmetics", "Beauty", 30m),
+        new("1230000456789", "Little Brown Bag Tote", "Exclusives", 38m),
+        new("7930006543210", "Valentino Donna Edp", "Beauty", 170m),
     };
 
     private readonly ITerminalLink? _link;
     private readonly TerminalLinkHost? _host;
     private readonly DispatcherTimer _clock;
     private readonly DispatcherTimer _cartSyncTimer;
+    private readonly DispatcherTimer _flowTimer;      // mock EMV / signature / complete pacing
+    private readonly DispatcherTimer _signatureTimer; // 89-second signature countdown
     private int _uid = 1;
     private int _txnBase = 40880;
     private string? _terminalOrderId;
+    private Action? _flowTimerAction;
 
     public MainViewModel() : this(null) { }
 
@@ -60,7 +68,7 @@ public partial class MainViewModel : ViewModelBase
         _host = link as TerminalLinkHost;
         Setup = new SetupViewModel(_host, () => OnUiThread(() =>
         {
-            ActiveOverlay = Overlay.None;
+            ShowSetup = false;
             OnPropertyChanged(nameof(TerminalTargetLabel));
         }));
 
@@ -81,193 +89,426 @@ public partial class MainViewModel : ViewModelBase
             _link.MessageReceived += m => OnUiThread(() => HandleTerminalMessage(m));
         }
 
-        Promos = new ObservableCollection<PromoRow>(PromoDefs.Select(d => new PromoRow(d)));
-
-        // Seed state matching the design handoff.
-        AddLine(Catalog[0], select: true);
-        AddLine(Catalog[4], select: false);
-        Lines[1].Quantity = 2;
-        Status = "Item 5590-0021 added · qty 2";
-        SelectLineInternal(Lines[0]);
-        Refresh();
-
         _cartSyncTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _cartSyncTimer.Tick += (_, _) => FlushCartSync();
 
+        _flowTimer = new DispatcherTimer();
+        _flowTimer.Tick += (_, _) =>
+        {
+            _flowTimer.Stop();
+            var action = _flowTimerAction;
+            _flowTimerAction = null;
+            action?.Invoke();
+        };
+
+        _signatureTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _signatureTimer.Tick += (_, _) =>
+        {
+            if (SignatureSecondsLeft > 0) SignatureSecondsLeft--;
+        };
+
         _clock = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _clock.Tick += (_, _) => ClockText = FormatClock(DateTime.Now);
+        _clock.Tick += (_, _) => TickClock();
         _clock.Start();
-        ClockText = FormatClock(DateTime.Now);
+        TickClock();
+
+        Refresh();
     }
 
     public ObservableCollection<SaleLine> Lines { get; } = new();
     public ObservableCollection<Payment> Payments { get; } = new();
-    public ObservableCollection<PromoRow> Promos { get; }
-    public IReadOnlyList<Product> QuickKeys => Catalog;
-    public IReadOnlyList<CustomerRecord> Customers { get; } = new List<CustomerRecord>
-    {
-        new("Luna Martinez", "+1 917 442 0118 · luna.m@mail.com", "LOYALLIST", "1,300 pts · $10 rewards", "LM"),
-        new("Shrimoy Satpathy", "+1 646 220 7741 · shrimoy@wink.cloud", "TOP OF THE LIST", "48,210 pts", "SS"),
-        new("Priya Rai", "+1 212 908 3355 · priya.r@mail.com", "MEMBER", "1,240 pts", "PR"),
-    };
 
-    private readonly List<string> _appliedPromos = new();
     private SaleLine? _selected;
 
     [ObservableProperty]
     public partial string Status { get; set; } = "";
 
     [ObservableProperty]
-    public partial string ClockText { get; set; } = "";
+    public partial string DateText { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string TimeText { get; set; } = "";
 
     [ObservableProperty]
     public partial string EntryBuffer { get; set; } = "";
 
     [ObservableProperty]
-    public partial CustomerRecord? Customer { get; set; }
+    [NotifyPropertyChangedFor(nameof(CustomerLinked), nameof(LoyaltyNumberDisplay))]
+    public partial string? CustomerName { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowCustomer), nameof(ShowPromos), nameof(ShowTender),
-        nameof(ShowDone), nameof(ShowSetup))]
-    public partial Overlay ActiveOverlay { get; set; } = Overlay.None;
+    public partial bool ShowSetup { get; set; }
 
     [ObservableProperty]
-    public partial bool IsDarkTheme { get; set; } = true;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(TerminalStatusLabel), nameof(TerminalTargetLabel), nameof(CardTileHint))]
+    [NotifyPropertyChangedFor(nameof(OnlineLabel))]
     public partial bool IsTerminalConnected { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(TendersEnabled))]
     public partial bool IsAwaitingTerminal { get; set; }
 
-    public bool ShowCustomer => ActiveOverlay == Overlay.Customer;
-    public bool ShowPromos => ActiveOverlay == Overlay.Promos;
-    public bool ShowTender => ActiveOverlay == Overlay.Tender;
-    public bool ShowDone => ActiveOverlay == Overlay.Done;
-    public bool ShowSetup => ActiveOverlay == Overlay.Setup;
-    public bool TendersEnabled => !IsAwaitingTerminal;
+    [ObservableProperty]
+    public partial int SignatureSecondsLeft { get; set; } = 89;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(
+        nameof(IsLoyaltyStage), nameof(IsScanStage), nameof(IsCheckoutStage),
+        nameof(IsMorePaymentsStage), nameof(IsCashStage), nameof(IsCardStage),
+        nameof(IsSignatureStage), nameof(IsCompleteStage), nameof(IsTenderSelectStage),
+        nameof(ShowBasket), nameof(ShowTotals), nameof(ShowCoupons), nameof(TKeys),
+        nameof(ShowScanEntry), nameof(ShowCashEntry))]
+    public partial RegisterStage Stage { get; set; } = RegisterStage.Loyalty;
+
+    public bool IsLoyaltyStage => Stage == RegisterStage.Loyalty;
+    public bool IsScanStage => Stage == RegisterStage.Scan;
+    public bool IsCheckoutStage => Stage == RegisterStage.Checkout;
+    public bool IsMorePaymentsStage => Stage == RegisterStage.MorePayments;
+    public bool IsCashStage => Stage == RegisterStage.CashTender;
+    public bool IsCardStage => Stage == RegisterStage.CardTender;
+    public bool IsSignatureStage => Stage == RegisterStage.SignatureWait;
+    public bool IsCompleteStage => Stage == RegisterStage.Complete;
+    public bool IsTenderSelectStage => Stage is RegisterStage.Checkout or RegisterStage.MorePayments;
+    public bool ShowBasket => Stage != RegisterStage.Loyalty;
+    public bool ShowTotals => Stage is RegisterStage.Checkout or RegisterStage.MorePayments
+        or RegisterStage.CashTender or RegisterStage.CardTender or RegisterStage.SignatureWait;
+    public bool ShowCoupons => ShowTotals;
+    public bool ShowScanEntry => Stage == RegisterStage.Scan;
+    public bool ShowCashEntry => Stage == RegisterStage.CashTender;
 
     /// <summary>Setup screen (F9). Null host = design-time / no live link.</summary>
     public SetupViewModel Setup { get; }
 
-    public string TerminalStatusLabel => IsTerminalConnected ? "Terminal" : "No terminal";
     public string TerminalTargetLabel => _host is null
         ? "Not configured"
         : TerminalLinkHost.Describe(_host.Config);
 
-    public string ThemeLabel => IsDarkTheme ? "LIGHT THEME" : "DARK THEME";
-    public string EntryDisplay => EntryBuffer + "▌";
+    public string Build => BuildLabel;
+    public string OnlineLabel => IsTerminalConnected ? "Online" : "Offline";
 
-    // ----- Derived money values -----
+    public bool CustomerLinked => CustomerName is not null;
+    public string LoyaltyNumberDisplay => CustomerLinked ? "Loyalty Number: XXXXXXXXX8585" : "";
+
+    // ----- Derived money values (AYS prints bare numbers, no currency sign) -----
 
     public decimal Subtotal => Lines.Sum(l => l.Amount);
+    public decimal Tax => Math.Round(Subtotal * TaxRate, 2, MidpointRounding.AwayFromZero);
+    public decimal Total => Subtotal + Tax;
+    public decimal Balance => Math.Max(0, Total - Payments.Sum(p => p.Amount));
 
-    public decimal Discount
+    public string SubtotalDisplay => Subtotal.ToString("N2");
+    public string TaxDisplay => Tax.ToString("N2");
+    public string TotalDisplay => Total.ToString("N2");
+    public string AmountDueDisplay => Balance.ToString("N2");
+    public string PurchItemsLabel => $"Purch Items: {Lines.Count}";
+    public bool HasItems => Lines.Count > 0;
+    public string CouponsLabel => "Coupons: 0   Savings: 0.00";
+
+    public string TxnId => $"T-0059-18-{_txnBase}";
+
+    // ----- Scan / cash entry -----
+
+    public string ScanEntryDisplay => EntryBuffer;
+    public string CashEntryDisplay => (CashEntryCents / 100m).ToString("N2");
+    private long CashEntryCents
     {
         get
         {
-            decimal disc = 0;
-            foreach (var id in _appliedPromos)
-            {
-                var p = PromoDefs.First(d => d.Id == id);
-                if (p.Pct is { } pct)
-                {
-                    var base_ = Lines.Where(l => p.Scope == "*" || l.Product.Dept == p.Scope).Sum(l => l.Amount);
-                    disc += base_ * pct;
-                }
-                else
-                {
-                    disc += p.Flat ?? 0;
-                }
-            }
-            return Math.Min(disc, Subtotal);
+            var digits = new string(EntryBuffer.Where(char.IsDigit).ToArray());
+            return digits.Length == 0 ? 0 : long.TryParse(digits, out var v) ? v : 0;
         }
     }
 
-    public decimal Tax => Math.Round((Subtotal - Discount) * TaxRate, 2, MidpointRounding.AwayFromZero);
-    public decimal Total => Subtotal - Discount + Tax;
-    public decimal Paid => Payments.Sum(p => p.Amount);
-    public decimal Balance => Math.Max(0, Total - Paid);
-    public decimal Change => Math.Max(0, Paid - Total);
-    public bool IsSettled => Balance <= 0.005m && Payments.Count > 0;
+    public string SignatureCountdownText =>
+        $"Transaction will be canceled in {SignatureSecondsLeft} seconds " +
+        "if a signature is not captured.  If more time is needed, press Esc.";
 
-    public string SubtotalDisplay => Money.Format(Subtotal);
-    public string DiscountDisplay => Discount > 0 ? "–" + Money.Format(Discount) : Money.Format(0);
-    public string DiscountLabel => _appliedPromos.Count > 0 ? $"Discounts ({_appliedPromos.Count})" : "Discounts";
-    public string TaxDisplay => Money.Format(Tax);
-    public string TotalDisplay => Money.Format(Total);
-    public string BalanceDisplay => Money.Format(Balance);
-    public string ChangeDisplay => Money.Format(Change);
-    public bool HasPaid => Payments.Count > 0;
-    public bool IsEmpty => Lines.Count == 0;
-    public bool IsNotEmpty => Lines.Count > 0;
+    partial void OnSignatureSecondsLeftChanged(int value) =>
+        OnPropertyChanged(nameof(SignatureCountdownText));
 
-    public string TxnId => $"T-0142-07-{(IsSettled ? _txnBase + 1 : _txnBase)}";
-    public string LineCountLabel =>
-        $"{Lines.Count} line{(Lines.Count == 1 ? "" : "s")} · {Lines.Sum(l => l.Quantity)} units";
+    // ----- T-keys -----
 
-    public string CustomerName => Customer?.Name ?? "No customer linked";
-    public string CustomerMeta => Customer is { } c ? $"{c.Tier} · {c.Points}" : "Search by phone, email, or Loyallist card";
-    public string CustomerInitials => Customer?.Initials ?? "+";
-    public string CustomerAction => Customer is null ? "LOOK UP" : "VIEW";
-    public string CustomerHint => Customer is null ? "Not linked" : "Linked";
-    public string PromoHint => $"{_appliedPromos.Count} applied · F4";
-    public string PromoScope => $"{Lines.Count} lines · {Money.Format(Subtotal)} eligible";
+    public IReadOnlyList<TKey> TKeys => BuildTKeys();
 
-    public string TenderLabel => Payments.Count > 0 ? "Continue tender" : "Tender";
-    public string TenderTitle => $"Tender · {Money.Format(Total)} total";
-    public string TenderHint => IsAwaitingTerminal
-        ? "Awaiting customer on the payment terminal…"
-        : Payments.Count > 0
-            ? $"Split tender in progress · {Payments.Count} authorised"
-            : "Card, cash, gift card, or split across tenders";
-    public string CardTileHint => IsTerminalConnected
-        ? "Customer terminal · chip, tap, or Wink"
-        : "Chip, contactless, or manual";
-
-    public string DoneMessage =>
-        (Customer is { } c ? $"{c.Name} earned {Math.Round(Total)} Loyallist points. " : "") +
-        $"Receipt printed and emailed. Transaction {Money.Format(Total)} settled across " +
-        $"{Payments.Count} tender{(Payments.Count == 1 ? "" : "s")}.";
-
-    // ----- Basket -----
+    private IReadOnlyList<TKey> BuildTKeys()
+    {
+        var hasItems = Lines.Count > 0;
+        return Stage switch
+        {
+            RegisterStage.Loyalty => new[]
+            {
+                new TKey(1, "Lookup Loyalty Number", true),
+                new TKey(2, "Enroll in Loyalty", true),
+                new TKey(3, "Apply for New Account", true),
+                new TKey(4, "Lookup Account", true),
+                new TKey(5, "", false),
+                new TKey(6, "", false),
+                new TKey(7, "Pay By Link", true),
+                new TKey(8, "Input Account on Signature Pad", true),
+            },
+            RegisterStage.Scan => new[]
+            {
+                new TKey(1, "Checkout", hasItems),
+                new TKey(2, "Change Price", hasItems),
+                new TKey(3, "Send Merchandise", true),
+                new TKey(4, "Add Gift Receipts on All", true),
+                new TKey(5, "Print on Salescheck", hasItems),
+                new TKey(6, "Change Tax", hasItems),
+                new TKey(7, "Loyallist Lookup/Enrollment", !CustomerLinked),
+                new TKey(8, "Add Registry on All", true),
+            },
+            RegisterStage.Checkout => new[]
+            {
+                new TKey(1, "Bloomingdale's Card/ Bloomingdale's Pay", true),
+                new TKey(2, "", false),
+                new TKey(3, "", false),
+                new TKey(4, "", false),
+                new TKey(5, "Gift Card/Rewards Happy Returns", true),
+                new TKey(6, "", false),
+                new TKey(7, "", false),
+                new TKey(8, "More Payment Methods", true),
+            },
+            RegisterStage.MorePayments => new[]
+            {
+                new TKey(1, "Bloomingdale's Card/ Bloomingdale's Pay", true),
+                new TKey(2, "Bankcard/ Debit Card/ Mobile Wallet", true),
+                new TKey(3, "Cash", true),
+                new TKey(4, "Check", true),
+                new TKey(5, "Gift Card/Rewards Happy Returns", true),
+                new TKey(6, "Reward Certificate", true),
+                new TKey(7, "PayPal/Venmo", false),
+                new TKey(8, "More", true),
+            },
+            RegisterStage.CardTender => new[]
+            {
+                new TKey(1, "", false),
+                new TKey(2, "Apply for New Account", true),
+                new TKey(3, "", false),
+                new TKey(4, "Lookup Account", true),
+                new TKey(5, "", false),
+                new TKey(6, "", false),
+                new TKey(7, "Promo Plans", true),
+                new TKey(8, "Input Account on Signature Pad", true),
+            },
+            RegisterStage.SignatureWait => new[]
+            {
+                new TKey(1, "", false),
+                new TKey(2, "", false),
+                new TKey(3, "", false),
+                new TKey(4, "Re-Prompt Signature", true),
+                new TKey(5, "", false),
+                new TKey(6, "", false),
+                new TKey(7, "", false),
+                new TKey(8, "", false),
+            },
+            _ => Enumerable.Range(1, 8).Select(i => new TKey(i, "", false)).ToArray(),
+        };
+    }
 
     [RelayCommand]
-    private void AddItem(Product product)
+    private void PressTKey(TKey key)
     {
-        var existing = Lines.FirstOrDefault(l => l.Product.Sku == product.Sku);
-        if (existing is not null)
+        if (!key.IsEnabled) return;
+        switch (Stage)
         {
-            existing.Quantity++;
-            SelectLineInternal(existing);
-            Status = $"{product.Name} · qty {existing.Quantity}";
+            case RegisterStage.Loyalty:
+                PressLoyaltyKey(key.Index);
+                break;
+            case RegisterStage.Scan:
+                PressScanKey(key.Index);
+                break;
+            case RegisterStage.Checkout:
+                PressCheckoutKey(key.Index);
+                break;
+            case RegisterStage.MorePayments:
+                PressMorePaymentsKey(key.Index);
+                break;
+            case RegisterStage.CardTender:
+                PressCardKey(key.Index);
+                break;
+            case RegisterStage.SignatureWait when key.Index == 4:
+                SignatureSecondsLeft = 89;
+                Status = "Signature re-prompted";
+                break;
         }
-        else
+    }
+
+    private void PressLoyaltyKey(int index)
+    {
+        switch (index)
         {
-            var line = AddLine(product, select: true);
-            Status = $"Item {product.Sku} added";
-            SelectLineInternal(line);
+            case 1:
+            case 4:
+            case 8:
+                LinkLoyalty();
+                break;
+            case 2:
+                Status = "Loyallist enrollment sent to Signature Pad";
+                break;
+            case 3:
+                Status = "New account application sent to Signature Pad";
+                break;
+            case 7:
+                Status = "Pay By Link — register is in Send Merchandise mode";
+                break;
         }
+    }
+
+    private void LinkLoyalty()
+    {
+        CustomerName = "B.TEST";
+        Status = "Loyallist XXXXXXXXX8585 linked";
+        Stage = RegisterStage.Scan;
+        ClearEntry();
         Refresh();
     }
 
-    private SaleLine AddLine(Product product, bool select)
+    private void PressScanKey(int index)
     {
+        switch (index)
+        {
+            case 1:
+                BeginCheckout();
+                break;
+            case 2: Status = "Change Price — supervisor required"; break;
+            case 3: Status = "Send Merchandise mode"; break;
+            case 4: Status = "Gift receipts added on all"; break;
+            case 5: Status = "Print on Salescheck"; break;
+            case 6: Status = "Change Tax — supervisor required"; break;
+            case 7: LinkLoyalty(); break;
+            case 8: Status = "Registry added on all"; break;
+        }
+    }
+
+    private void BeginCheckout()
+    {
+        if (Lines.Count == 0) return;
+        Stage = RegisterStage.Checkout;
+        ClearEntry();
+        Refresh();
+    }
+
+    private void PressCheckoutKey(int index)
+    {
+        switch (index)
+        {
+            case 1:
+                StartCardTender("BD_LOYALLIST");
+                break;
+            case 5:
+                Status = "Gift Card / Rewards — have customer swipe the card";
+                break;
+            case 8:
+                Stage = RegisterStage.MorePayments;
+                break;
+        }
+    }
+
+    private void PressMorePaymentsKey(int index)
+    {
+        switch (index)
+        {
+            case 1:
+                StartCardTender("BD_LOYALLIST");
+                break;
+            case 2:
+                StartCardTender("CARD");
+                break;
+            case 3:
+                Stage = RegisterStage.CashTender;
+                ClearEntry();
+                break;
+            case 4: Status = "Check tender is not available on this register"; break;
+            case 5: Status = "Gift Card / Rewards — have customer swipe the card"; break;
+            case 6: Status = "No reward certificates on file"; break;
+            case 8: Status = "No more payment methods"; break;
+        }
+    }
+
+    private void PressCardKey(int index)
+    {
+        switch (index)
+        {
+            case 2: Status = "New account application sent to Signature Pad"; break;
+            case 4: Status = "Lookup account on Signature Pad"; break;
+            case 7: Status = "No promo plans for this basket"; break;
+            case 8: Status = "Key-in prompted on Signature Pad"; break;
+        }
+    }
+
+    // ----- Scan / cash entry (keyboard + scan gun) -----
+
+    public void EntryChar(char c)
+    {
+        var ok = Stage switch
+        {
+            RegisterStage.Scan => char.IsLetterOrDigit(c),
+            RegisterStage.CashTender => char.IsDigit(c),
+            _ => false,
+        };
+        if (!ok) return;
+        EntryBuffer += c;
+        OnPropertyChanged(nameof(ScanEntryDisplay));
+        OnPropertyChanged(nameof(CashEntryDisplay));
+    }
+
+    public void EntryBackspace()
+    {
+        if (EntryBuffer.Length == 0) return;
+        EntryBuffer = EntryBuffer[..^1];
+        OnPropertyChanged(nameof(ScanEntryDisplay));
+        OnPropertyChanged(nameof(CashEntryDisplay));
+    }
+
+    public void EntrySubmit()
+    {
+        switch (Stage)
+        {
+            case RegisterStage.Scan:
+                var upc = EntryBuffer.Trim();
+                ClearEntry();
+                if (upc.Length > 0) ScanUpc(upc);
+                break;
+
+            case RegisterStage.CashTender:
+                var tendered = CashEntryCents / 100m;
+                if (tendered + 0.005m < Total)
+                {
+                    Status = tendered == 0 ? "" : "Cash tendered is less than the amount due";
+                    return;
+                }
+                ClearEntry();
+                CompleteSale("Cash", Total);
+                break;
+
+            case RegisterStage.Complete:
+                NewSale();
+                break;
+        }
+    }
+
+    private void ClearEntry()
+    {
+        EntryBuffer = "";
+        OnPropertyChanged(nameof(ScanEntryDisplay));
+        OnPropertyChanged(nameof(CashEntryDisplay));
+    }
+
+    public void ScanUpc(string upc)
+    {
+        var product = Catalog.FirstOrDefault(p => p.Sku == upc);
+        if (product is null)
+        {
+            Status = $"UPC {upc} not on file";
+            return;
+        }
         var line = new SaleLine(_uid++, product);
         Lines.Add(line);
-        Renumber();
-        if (select) SelectLineInternal(line);
-        return line;
+        SelectLineInternal(line);
+        Status = "";
+        Refresh();
     }
 
     [RelayCommand]
-    private void SelectLine(SaleLine line)
-    {
-        SelectLineInternal(line);
-        Status = $"Line {Lines.IndexOf(line) + 1} selected";
-    }
+    private void SelectLine(SaleLine line) => SelectLineInternal(line);
 
     private void SelectLineInternal(SaleLine line)
     {
@@ -275,137 +516,79 @@ public partial class MainViewModel : ViewModelBase
         _selected = line;
     }
 
+    /// <summary>Delete key — void the selected line (scan stage only).</summary>
     [RelayCommand]
-    private void IncrementQty(SaleLine line)
+    private void DeleteLine()
     {
-        line.Quantity++;
-        SelectLineInternal(line);
-        Status = "Quantity increased";
-        Refresh();
-    }
-
-    [RelayCommand]
-    private void DecrementQty(SaleLine line)
-    {
-        line.Quantity = Math.Max(1, line.Quantity - 1);
-        SelectLineInternal(line);
-        Status = "Quantity decreased";
-        Refresh();
-    }
-
-    private void Renumber()
-    {
-        for (var i = 0; i < Lines.Count; i++)
-        {
-            Lines[i].Num = (i + 1).ToString("D2");
-        }
-    }
-
-    // ----- Scan / SKU entry -----
-
-    public void EntryChar(char c)
-    {
-        if (char.IsLetterOrDigit(c) || c == '-')
-        {
-            EntryBuffer += c;
-            OnPropertyChanged(nameof(EntryDisplay));
-        }
-    }
-
-    public void EntryBackspace()
-    {
-        if (EntryBuffer.Length > 0)
-        {
-            EntryBuffer = EntryBuffer[..^1];
-            OnPropertyChanged(nameof(EntryDisplay));
-        }
-    }
-
-    public void EntrySubmit()
-    {
-        var sku = EntryBuffer.Trim();
-        EntryBuffer = "";
-        OnPropertyChanged(nameof(EntryDisplay));
-        if (sku.Length == 0) return;
-
-        var product = Catalog.FirstOrDefault(p => p.Sku == sku);
-        if (product is not null) AddItem(product);
-        else Status = $"SKU {sku} not found";
-    }
-
-    // ----- Function pad -----
-
-    [RelayCommand] private void ItemSearch() => Status = "Catalogue search opened";
-    [RelayCommand] private void OpenPromos() => ActiveOverlay = Overlay.Promos;
-    [RelayCommand] private void OpenCustomer() => ActiveOverlay = Overlay.Customer;
-    [RelayCommand] private void PriceOverride() => Status = "Manager authorisation required";
-    [RelayCommand] private void ShipFromStore() => Status = "Checking network inventory…";
-    [RelayCommand] private void SuspendSale() => Status = "Sale suspended · recall code 4471";
-
-    [RelayCommand]
-    private void GiftOptions() =>
-        Status = _selected is null ? "Select a line for gift options" : $"Gift wrap added to line {Lines.IndexOf(_selected) + 1}";
-
-    [RelayCommand]
-    private void VoidLine()
-    {
-        if (_selected is null) return;
+        if (ShowSetup || Stage != RegisterStage.Scan || _selected is null) return;
         Lines.Remove(_selected);
-        _selected = Lines.FirstOrDefault();
+        _selected = Lines.LastOrDefault();
         if (_selected is not null) SelectLineInternal(_selected);
-        Renumber();
-        Status = "Line voided";
+        Status = "Item deleted";
         Refresh();
     }
 
-    // ----- Customer -----
+    // ----- F-keys / Esc -----
 
+    /// <summary>F3 — cancel the whole transaction from any stage.</summary>
     [RelayCommand]
-    private void PickCustomer(CustomerRecord customer)
+    private async Task CancelTransactionAsync()
     {
-        Customer = customer;
-        ActiveOverlay = Overlay.None;
-        Status = $"{customer.Name} linked · {customer.Tier}";
+        if (ShowSetup) return;
+        await CancelTerminalPaymentAsync();
+        NewSale();
+        Status = "Transaction canceled";
+    }
+
+    /// <summary>F6 — bypass loyalty and go straight to merchandise.</summary>
+    [RelayCommand]
+    private void Bypass()
+    {
+        if (ShowSetup || Stage != RegisterStage.Loyalty) return;
+        Stage = RegisterStage.Scan;
         Refresh();
     }
 
-    // ----- Promotions -----
-
+    /// <summary>F8 — suspend (mocked; the demo never recalls).</summary>
     [RelayCommand]
-    private void TogglePromo(PromoRow row)
+    private void Suspend()
     {
-        var p = row.Def;
-        if (p.Id == "loyalty" && Customer is null)
+        if (Stage is RegisterStage.Scan or RegisterStage.Checkout or RegisterStage.MorePayments)
         {
-            Status = "Link a Loyallist member to redeem rewards";
+            Status = "Transaction suspended";
+        }
+    }
+
+    /// <summary>Esc — stage-appropriate step back.</summary>
+    [RelayCommand]
+    private async Task EscapeAsync()
+    {
+        if (ShowSetup)
+        {
+            ShowSetup = false;
             return;
         }
-        if (p.Id == "emp")
+
+        switch (Stage)
         {
-            Status = "Associate discount blocked · fine jewelry in basket";
-            return;
+            case RegisterStage.Checkout:
+            case RegisterStage.MorePayments:
+                Stage = RegisterStage.Scan; // Return to Merchandise Section
+                Refresh();
+                break;
+            case RegisterStage.CashTender:
+                Stage = RegisterStage.MorePayments; // Change Form of Payment
+                ClearEntry();
+                break;
+            case RegisterStage.CardTender:
+                await CancelTerminalPaymentAsync();
+                Stage = RegisterStage.Checkout; // Change Form of Payment
+                Refresh();
+                break;
+            case RegisterStage.SignatureWait:
+                SignatureSecondsLeft = 89; // more time
+                break;
         }
-
-        var on = _appliedPromos.Contains(p.Id);
-        if (on) _appliedPromos.Remove(p.Id);
-        else _appliedPromos.Add(p.Id);
-
-        foreach (var line in Lines.Where(l => p.Scope == "*" || l.Product.Dept == p.Scope))
-        {
-            line.Promo = on ? null : p.Tag;
-        }
-
-        Status = (on ? "Removed " : "Applied ") + p.Name;
-        Refresh();
-    }
-
-    // ----- Overlays -----
-
-    [RelayCommand]
-    private void CloseOverlay()
-    {
-        if (IsAwaitingTerminal) return; // don't leave tender mid-authorisation
-        ActiveOverlay = Overlay.None;
     }
 
     [RelayCommand]
@@ -416,123 +599,71 @@ public partial class MainViewModel : ViewModelBase
             Status = "Finish or cancel the payment before changing setup";
             return;
         }
-
         Setup.RescanCommand.Execute(null);
-        ActiveOverlay = Overlay.Setup;
+        ShowSetup = true;
     }
 
-    [RelayCommand]
-    private void OpenTender()
-    {
-        if (Lines.Count == 0)
-        {
-            Status = "Basket is empty";
-            return;
-        }
-        ActiveOverlay = Overlay.Tender;
-    }
-
-    // ----- Tenders -----
-
-    private PosMessage BuildCartMessage() => new()
-    {
-        Type = PosMessageTypes.DisplayCart,
-        OrderId = TxnId,
-        Currency = "USD",
-        Items = Lines.Select(l => new CartLine(l.Product.Name, l.Quantity,
-            (long)Math.Round(l.Amount * 100m))).ToArray(),
-        SubtotalCents = (long)Math.Round(Subtotal * 100m),
-        TaxCents = (long)Math.Round(Tax * 100m),
-        AmountCents = (long)Math.Round(Total * 100m),
-    };
-
-    [RelayCommand]
-    private async Task SendToTerminalAsync()
-    {
-        if (_link is null || !IsTerminalConnected)
-        {
-            Status = "No customer terminal connected";
-            return;
-        }
-
-        Status = await _link.SendAsync(BuildCartMessage())
-            ? $"Basket sent to customer terminal · {Money.Format(Total)}"
-            : "Failed to send basket to terminal";
-    }
-
-    // ----- Live cart mirroring -----
-
-    private string? _lastCartJson;
+    // ----- Card tender (customer terminal / WinkPay) -----
 
     /// <summary>
-    /// Debounced push of the basket to the customer terminal. Called from
-    /// Refresh() so every mutation (add line, qty, void, promo, new sale)
-    /// lands on the PxRetailer screen without a manual send. Skipped while a
-    /// payment is in flight so we don't stomp the EMV screens.
+    /// T1 (Bloomingdale's Card / Pay → PxRetailer payment-options page, where
+    /// the customer can pick face/palm) or T2 (bankcard → straight EMV).
+    /// With no terminal connected the flow is simulated so the demo still runs.
     /// </summary>
-    private void QueueCartSync()
+    private void StartCardTender(string method)
     {
-        if (_link is null || !IsTerminalConnected || IsAwaitingTerminal) return;
-        _cartSyncTimer.Stop();
-        _cartSyncTimer.Start();
-    }
-
-    private void FlushCartSync()
-    {
-        _cartSyncTimer.Stop();
-        if (_link is null || !IsTerminalConnected || IsAwaitingTerminal) return;
-
-        var message = BuildCartMessage();
-        var json = PosJson.Serialize(message);
-        if (json == _lastCartJson) return;
-        _lastCartJson = json;
-        _ = Task.Run(async () =>
-        {
-            if (!await _link.SendAsync(message))
-            {
-                OnUiThread(() => _lastCartJson = null); // retry on next change
-            }
-        });
-    }
-
-    [RelayCommand]
-    private async Task TenderCardAsync()
-    {
-        if (IsAwaitingTerminal) return;
+        Stage = RegisterStage.CardTender;
+        Refresh();
 
         if (_link is { IsConnected: true })
         {
             _terminalOrderId = $"{TxnId}-{Payments.Count + 1}";
             IsAwaitingTerminal = true;
-            Refresh();
-            Status = "Payment sent to customer terminal";
-
-            var sent = await _link.SendAsync(new PosMessage
+            _ = Task.Run(async () =>
             {
-                Type = PosMessageTypes.StartPayment,
-                OrderId = _terminalOrderId,
-                AmountCents = (long)Math.Round(Balance * 100),
-                Currency = "USD",
-                Method = "CARD", // PxRetailer: straight into the EMV flow
+                var sent = await _link.SendAsync(new PosMessage
+                {
+                    Type = PosMessageTypes.StartPayment,
+                    OrderId = _terminalOrderId,
+                    AmountCents = (long)Math.Round(Balance * 100),
+                    Currency = "USD",
+                    Method = method,
+                });
+                if (!sent)
+                {
+                    OnUiThread(() =>
+                    {
+                        IsAwaitingTerminal = false;
+                        _terminalOrderId = null;
+                        Status = "Customer terminal unreachable";
+                    });
+                }
             });
-
-            if (!sent)
-            {
-                IsAwaitingTerminal = false;
-                _terminalOrderId = null;
-                Status = "Customer terminal unreachable";
-                Refresh();
-            }
         }
         else
         {
-            Pay("Visa •••• 4417", "Contactless · approved 8813", Balance);
+            // Standalone mock: card goes in, then the signature screen.
+            ScheduleFlow(TimeSpan.FromSeconds(2.5), () =>
+            {
+                if (Stage != RegisterStage.CardTender) return;
+                Stage = RegisterStage.SignatureWait;
+                SignatureSecondsLeft = 89;
+                _signatureTimer.Start();
+                ScheduleFlow(TimeSpan.FromSeconds(4), () =>
+                {
+                    if (Stage != RegisterStage.SignatureWait) return;
+                    _signatureTimer.Stop();
+                    CompleteSale("Bloomingdale's Card", Total);
+                });
+            });
         }
     }
 
-    [RelayCommand]
-    private async Task CancelTerminalAsync()
+    private async Task CancelTerminalPaymentAsync()
     {
+        _flowTimer.Stop();
+        _flowTimerAction = null;
+        _signatureTimer.Stop();
         if (!IsAwaitingTerminal) return;
         if (_link is not null && _terminalOrderId is not null)
         {
@@ -544,8 +675,6 @@ public partial class MainViewModel : ViewModelBase
         }
         IsAwaitingTerminal = false;
         _terminalOrderId = null;
-        Status = "Terminal payment cancelled";
-        Refresh();
     }
 
     private void HandleTerminalMessage(PosMessage m)
@@ -569,15 +698,13 @@ public partial class MainViewModel : ViewModelBase
                 return;
             }
 
-            // The customer can start the sale themselves from the tender
-            // buttons on the PxRetailer form, without the cashier pressing
-            // Tender first. Open the payment here so the register follows along
-            // instead of dropping the event.
+            // The customer can start the tender themselves from the terminal;
+            // follow along on the register instead of dropping the event.
             if (!IsAwaitingTerminal)
             {
                 _terminalOrderId = $"{TxnId}-{Payments.Count + 1}";
                 IsAwaitingTerminal = true;
-                ActiveOverlay = Overlay.Tender;
+                Stage = RegisterStage.CardTender;
                 Refresh();
             }
 
@@ -606,133 +733,139 @@ public partial class MainViewModel : ViewModelBase
             case "APPROVED":
                 _ = _link!.SendAsync(new PosMessage { Type = PosMessageTypes.ShowThanks });
                 var amount = m.AmountCents is { } cents ? cents / 100m : Balance;
-                Pay(m.Method ?? "Card · customer terminal", "Customer terminal · approved", Math.Min(amount, Balance));
+                CompleteSale(TenderLabelFor(m.Method), Math.Min(amount, Balance));
                 break;
             case "DECLINED":
                 Status = m.Reason ?? "Payment declined on customer terminal";
+                Stage = RegisterStage.Checkout;
                 Refresh();
                 break;
             case "CANCELLED":
                 Status = "Payment cancelled on customer terminal";
+                Stage = RegisterStage.Checkout;
                 Refresh();
                 break;
         }
     }
 
-    [RelayCommand]
-    private void TenderCircle() =>
-        Pay("Loyallist card •••• 1234", Customer is { } c ? $"On file · {c.Name}" : "Manual entry", Balance);
-
-    [RelayCommand]
-    private void TenderCash() => Pay("Cash", "Drawer 2 · tendered", Balance);
-
-    [RelayCommand]
-    private void TenderGift() =>
-        Pay("Gift card •••• 2210", "Partial · $500.00 balance", Math.Min(Balance, 500m));
-
-    [RelayCommand]
-    private void TenderSplit() =>
-        Pay("Visa •••• 4417", "Split 1 of 2", Math.Min(Balance, 500m));
-
-    [RelayCommand]
-    private async Task TenderLoyallistAsync()
+    private static string TenderLabelFor(string? method) => method switch
     {
-        if (IsAwaitingTerminal) return;
+        "FACE" or "PALM" or "WINK" => "Bloomingdale's Pay",
+        "CASH" => "Cash",
+        null => "Bloomingdale's Card",
+        _ => "Bloomingdale's Card",
+    };
 
-        if (_link is { IsConnected: true })
-        {
-            _terminalOrderId = $"{TxnId}-{Payments.Count + 1}";
-            IsAwaitingTerminal = true;
-            Refresh();
-            Status = "Customer choosing payment on terminal";
+    // ----- Complete / new sale -----
 
-            var sent = await _link.SendAsync(new PosMessage
-            {
-                Type = PosMessageTypes.StartPayment,
-                OrderId = _terminalOrderId,
-                AmountCents = (long)Math.Round(Balance * 100),
-                Currency = "USD",
-                Method = "BD_LOYALLIST", // PxRetailer: payment-options page
-            });
-
-            if (!sent)
-            {
-                IsAwaitingTerminal = false;
-                _terminalOrderId = null;
-                Status = "Customer terminal unreachable";
-                Refresh();
-            }
-        }
-        else
-        {
-            Status = "No customer terminal connected";
-        }
-    }
-
-    private void Pay(string label, string detail, decimal amount)
+    private void CompleteSale(string label, decimal amount)
     {
-        Payments.Add(new Payment(label, detail, amount));
-        Status = $"{label} authorised · {Money.Format(amount)}";
+        _signatureTimer.Stop();
+        Payments.Add(new Payment(label, "", amount));
+        Stage = RegisterStage.Complete;
+        Status = "";
         Refresh();
-    }
 
-    [RelayCommand]
-    private void Finish() => ActiveOverlay = Overlay.Done;
+        // The real register bounces back to the loyalty prompt on its own.
+        ScheduleFlow(TimeSpan.FromSeconds(6), NewSale);
+    }
 
     [RelayCommand]
     private void NewSale()
     {
+        _flowTimer.Stop();
+        _flowTimerAction = null;
+        _signatureTimer.Stop();
         _txnBase++;
         Lines.Clear();
         Payments.Clear();
-        _appliedPromos.Clear();
-        foreach (var row in Promos) row.IsApplied = false;
-        Customer = null;
+        CustomerName = null;
         _selected = null;
-        ActiveOverlay = Overlay.None;
-        Status = "New sale started · scan an item";
+        IsAwaitingTerminal = false;
+        _terminalOrderId = null;
+        ClearEntry();
+        Status = "";
+        Stage = RegisterStage.Loyalty;
         Refresh();
     }
 
-    // ----- Theme -----
-
-    [RelayCommand]
-    private void ToggleTheme()
+    private void ScheduleFlow(TimeSpan delay, Action action)
     {
-        IsDarkTheme = !IsDarkTheme;
-        OnPropertyChanged(nameof(ThemeLabel));
-        if (Application.Current is { } app)
+        _flowTimer.Stop();
+        _flowTimerAction = action;
+        _flowTimer.Interval = delay;
+        _flowTimer.Start();
+    }
+
+    // ----- Live cart mirroring -----
+
+    private PosMessage BuildCartMessage() => new()
+    {
+        Type = PosMessageTypes.DisplayCart,
+        OrderId = TxnId,
+        Currency = "USD",
+        Items = Lines.Select(l => new CartLine(l.Product.Name, l.Quantity,
+            (long)Math.Round(l.Amount * 100m))).ToArray(),
+        SubtotalCents = (long)Math.Round(Subtotal * 100m),
+        TaxCents = (long)Math.Round(Tax * 100m),
+        AmountCents = (long)Math.Round(Total * 100m),
+    };
+
+    private string? _lastCartJson;
+
+    /// <summary>
+    /// Debounced push of the basket to the customer terminal. Called from
+    /// Refresh() so every mutation (scan, delete, new sale) lands on the
+    /// PxRetailer screen without a manual send. Skipped while a payment is
+    /// in flight so we don't stomp the EMV screens.
+    /// </summary>
+    private void QueueCartSync()
+    {
+        if (_link is null || !IsTerminalConnected || IsAwaitingTerminal) return;
+        _cartSyncTimer.Stop();
+        _cartSyncTimer.Start();
+    }
+
+    private void FlushCartSync()
+    {
+        _cartSyncTimer.Stop();
+        if (_link is null || !IsTerminalConnected || IsAwaitingTerminal) return;
+
+        var message = BuildCartMessage();
+        var json = PosJson.Serialize(message);
+        if (json == _lastCartJson) return;
+        _lastCartJson = json;
+        _ = Task.Run(async () =>
         {
-            app.RequestedThemeVariant = IsDarkTheme ? ThemeVariant.Dark : ThemeVariant.Light;
-        }
+            if (!await _link.SendAsync(message))
+            {
+                OnUiThread(() => _lastCartJson = null); // retry on next change
+            }
+        });
     }
 
     // ----- Helpers -----
 
     private void Refresh()
     {
-        foreach (var row in Promos)
-        {
-            row.IsApplied = _appliedPromos.Contains(row.Def.Id);
-            row.IsBlocked = row.Def.Id == "emp" || (row.Def.Id == "loyalty" && Customer is null);
-        }
-
         foreach (var name in DerivedProps) OnPropertyChanged(name);
         QueueCartSync();
     }
 
     private static readonly string[] DerivedProps =
     {
-        nameof(Subtotal), nameof(Discount), nameof(Tax), nameof(Total), nameof(Balance), nameof(Change),
-        nameof(SubtotalDisplay), nameof(DiscountDisplay), nameof(DiscountLabel), nameof(TaxDisplay),
-        nameof(TotalDisplay), nameof(BalanceDisplay), nameof(ChangeDisplay), nameof(HasPaid),
-        nameof(IsEmpty), nameof(IsNotEmpty), nameof(IsSettled), nameof(TxnId), nameof(LineCountLabel),
-        nameof(CustomerName), nameof(CustomerMeta), nameof(CustomerInitials), nameof(CustomerAction),
-        nameof(CustomerHint), nameof(PromoHint), nameof(PromoScope), nameof(TenderLabel),
-        nameof(TenderTitle), nameof(TenderHint), nameof(CardTileHint), nameof(DoneMessage),
+        nameof(Subtotal), nameof(Tax), nameof(Total), nameof(Balance),
+        nameof(SubtotalDisplay), nameof(TaxDisplay), nameof(TotalDisplay), nameof(AmountDueDisplay),
+        nameof(PurchItemsLabel), nameof(CouponsLabel), nameof(HasItems), nameof(TxnId), nameof(TKeys),
+        nameof(CustomerLinked), nameof(LoyaltyNumberDisplay),
     };
 
-    private static string FormatClock(DateTime now) => now.ToString("ddd d MMM · h:mm tt");
+    private void TickClock()
+    {
+        var now = DateTime.Now;
+        DateText = now.ToString("MM/dd");
+        TimeText = now.ToString("h:mm tt");
+    }
 
     private static void OnUiThread(Action action) => Dispatcher.UIThread.Post(action);
 }
