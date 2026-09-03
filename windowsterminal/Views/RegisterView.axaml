@@ -104,7 +104,7 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid RowDefinitions="34,*,176,38,40" Background="#C9C4B2">
+    <Grid RowDefinitions="34,*,176,40" Background="#C9C4B2">
 
         <!-- ===== Title strip ===== -->
         <Border Grid.Row="0">
@@ -316,34 +316,47 @@
             <Border Grid.Column="1" Background="#F9F7DF" BorderBrush="#55534A" BorderThickness="0,1,1,1">
                 <DockPanel Margin="12,8,12,8">
 
-                    <!-- Bottom F-key legends -->
-                    <StackPanel DockPanel.Dock="Bottom" Spacing="2">
-                        <DockPanel IsVisible="{Binding IsLoyaltyStage}">
-                            <TextBlock Classes="legend" Text="F6&#160;&#160;- Bypass" />
-                            <TextBlock Classes="legend" Text="F3&#160;&#160;- Cancel Transaction"
-                                       HorizontalAlignment="Right" />
-                        </DockPanel>
-                        <StackPanel IsVisible="{Binding IsScanStage}" Spacing="2">
-                            <TextBlock Classes="legend" Text="F3&#160;&#160;&#160;&#160;&#160;&#160;- Cancel Transaction" />
-                            <TextBlock Classes="legend" Text="Delete&#160;- Delete Selected Item" />
-                            <TextBlock Classes="legend" IsVisible="{Binding HasItems}"
-                                       Text="F8&#160;&#160;&#160;&#160;&#160;&#160;- Suspend Transaction" />
-                        </StackPanel>
-                        <StackPanel IsVisible="{Binding IsTenderSelectStage}" Spacing="2">
-                            <TextBlock Classes="legend" Text="F3&#160;&#160;&#160;&#160;- Cancel Transaction" />
-                            <TextBlock Classes="legend" Text="Esc&#160;&#160;- Return to Merchandise Section" />
-                            <TextBlock Classes="legend" Text="F8&#160;&#160;&#160;&#160;- Suspend Transaction" />
-                        </StackPanel>
-                        <StackPanel IsVisible="{Binding IsCashStage}" Spacing="2">
-                            <TextBlock Classes="legend" Text="F3&#160;&#160;&#160;- Cancel Transaction" />
-                            <TextBlock Classes="legend" Text="Esc&#160;- Change Form of Payment" />
-                        </StackPanel>
-                        <StackPanel IsVisible="{Binding IsCardStage}" Spacing="2">
-                            <TextBlock Classes="legend" Text="Esc&#160;- Change Form of Payment" />
-                            <TextBlock Classes="legend" Text="F3&#160;&#160;&#160;- Cancel Transaction" />
-                        </StackPanel>
-                        <TextBlock Classes="legend" IsVisible="{Binding IsSignatureStage}"
-                                   Text="F3&#160;- Cancel Transaction" />
+                    <!-- Bottom action buttons. These were F-key legends; they do
+                         the same things but are tappable, so the demo needs no
+                         keyboard. The shortcuts still work. -->
+                    <StackPanel DockPanel.Dock="Bottom" Spacing="6">
+                        <WrapPanel IsVisible="{Binding IsLoyaltyStage}" ItemSpacing="6" LineSpacing="6">
+                            <Button Classes="fkey" Content="Bypass" Command="{Binding BypassCommand}" />
+                            <Button Classes="fkey" Content="Cancel Transaction"
+                                    Command="{Binding CancelTransactionCommand}" />
+                        </WrapPanel>
+                        <WrapPanel IsVisible="{Binding IsScanStage}" ItemSpacing="6" LineSpacing="6">
+                            <Button Classes="fkey" Content="Delete Selected Item"
+                                    Command="{Binding DeleteLineCommand}" />
+                            <Button Classes="fkey" Content="Suspend Transaction"
+                                    IsVisible="{Binding HasItems}" Command="{Binding SuspendCommand}" />
+                            <Button Classes="fkey" Content="Cancel Transaction"
+                                    Command="{Binding CancelTransactionCommand}" />
+                        </WrapPanel>
+                        <WrapPanel IsVisible="{Binding IsTenderSelectStage}" ItemSpacing="6" LineSpacing="6">
+                            <Button Classes="fkey" Content="Return to Merchandise"
+                                    Command="{Binding EscapeCommand}" />
+                            <Button Classes="fkey" Content="Suspend Transaction"
+                                    Command="{Binding SuspendCommand}" />
+                            <Button Classes="fkey" Content="Cancel Transaction"
+                                    Command="{Binding CancelTransactionCommand}" />
+                        </WrapPanel>
+                        <WrapPanel IsVisible="{Binding IsCashStage}" ItemSpacing="6" LineSpacing="6">
+                            <Button Classes="fkey" Content="Change Form of Payment"
+                                    Command="{Binding EscapeCommand}" />
+                            <Button Classes="fkey" Content="Cancel Transaction"
+                                    Command="{Binding CancelTransactionCommand}" />
+                        </WrapPanel>
+                        <WrapPanel IsVisible="{Binding IsCardStage}" ItemSpacing="6" LineSpacing="6">
+                            <Button Classes="fkey" Content="Change Form of Payment"
+                                    Command="{Binding EscapeCommand}" />
+                            <Button Classes="fkey" Content="Cancel Transaction"
+                                    Command="{Binding CancelTransactionCommand}" />
+                        </WrapPanel>
+                        <WrapPanel IsVisible="{Binding IsSignatureStage}" ItemSpacing="6" LineSpacing="6">
+                            <Button Classes="fkey" Content="Cancel Transaction"
+                                    Command="{Binding CancelTransactionCommand}" />
+                        </WrapPanel>
                     </StackPanel>
 
                     <!-- Stage prompts -->
@@ -495,36 +508,8 @@
             </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <!-- ===== Function bar ===== -->
-        <Border Grid.Row="3" Background="#CFCAB6" BorderBrush="#8A867A" BorderThickness="0,1,0,0">
-            <StackPanel Orientation="Horizontal" Spacing="8" Margin="10,0"
-                        VerticalAlignment="Center">
-                <Button Classes="fkey" Content="Back" Command="{Binding EscapeCommand}"
-                        ToolTip.Tip="Step back one screen (Esc)" />
-                <Button Classes="fkey" Content="Cancel Transaction"
-                        Command="{Binding CancelTransactionCommand}"
-                        ToolTip.Tip="Void the whole sale and start over (F3)" />
-                <Button Classes="fkey" Content="Bypass Loyalty" Command="{Binding BypassCommand}"
-                        IsVisible="{Binding IsLoyaltyStage}"
-                        ToolTip.Tip="Skip the loyalty prompt (F6)" />
-                <Button Classes="fkey" Content="Void Line" Command="{Binding DeleteLineCommand}"
-                        IsVisible="{Binding IsScanStage}"
-                        ToolTip.Tip="Remove the selected line (Delete)" />
-                <Button Classes="fkey" Content="Suspend" Command="{Binding SuspendCommand}"
-                        ToolTip.Tip="Suspend the transaction (F8)" />
-                <Button Classes="fkey" Content="New Sale" Command="{Binding NewSaleCommand}" />
-
-                <Border Width="1" Height="20" Background="#8A867A" Margin="6,0" />
-
-                <Button Classes="fkey" Content="Items" Command="{Binding OpenItemsCommand}"
-                        ToolTip.Tip="Tap-to-add items page" />
-                <Button Classes="fkey" Content="Terminal Setup" Command="{Binding OpenSetupCommand}"
-                        ToolTip.Tip="Payment terminal connection (F9)" />
-            </StackPanel>
-        </Border>
-
         <!-- ===== Status bar ===== -->
-        <Border Grid.Row="4" Background="#D9D4C0" BorderBrush="#8A867A" BorderThickness="0,1,0,0">
+        <Border Grid.Row="3" Background="#D9D4C0" BorderBrush="#8A867A" BorderThickness="0,1,0,0">
             <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto" Margin="6,2">
                 <StackPanel Grid.Column="0" Margin="0,0,26,0">
                     <TextBlock Text="72027959" FontSize="11.5" />
