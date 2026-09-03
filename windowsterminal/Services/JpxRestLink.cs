@@ -388,11 +388,18 @@ public sealed class JpxRestLink : ITerminalLink
                 _ = Task.Run(FetchResultAsync);
             }
 
-            // PAYMENTSTATUS face|palm|card -> a tender button on the
-            // PxRetailer form (PxDesigner FireEvent). Surface to the VM so it
-            // can route the sale to WinkPay or the EMV flow.
-            if (name == "PAYMENTSTATUS" && !string.IsNullOrWhiteSpace(value))
+            // A tender button on the PxRetailer form. PAX's custom package
+            // wires the Face button as FireEvent IS_TRANS_STARTED="face"
+            // (the same event name as the handshake flag, but with the tender
+            // as the value instead of 0/1/2); older builds used a separate
+            // PAYMENTSTATUS event. Accept both and surface to the VM so it can
+            // route the sale to WinkPay or the EMV flow.
+            var isTender = name == "PAYMENTSTATUS"
+                || (name == EventTransState && value?.Trim().ToLowerInvariant()
+                        is "face" or "palm" or "card" or "credit" or "debit");
+            if (isTender && !string.IsNullOrWhiteSpace(value))
             {
+                Console.WriteLine($"[JpxRestLink] tender selected on the form: {value}");
                 MessageReceived?.Invoke(new PosMessage
                 {
                     Type = PosMessageTypes.TenderSelected,
@@ -689,18 +696,26 @@ public sealed class JpxRestLink : ITerminalLink
 
     /// <summary>
     /// /subscribe takes the callback server's X509 certificate as a file
-    /// attachment ("filename"), and per the API docs PXRRS needs it to
-    /// authenticate an HTTPS replyURL before it will post anything there.
-    /// Without it the subscription still registers — getSubscriptionData
-    /// happily reports the replyAddress — but every notification is dropped at
-    /// the TLS handshake, which looks exactly like the terminal never firing an
-    /// event. The certificate sent is exported from the very keystore the
-    /// notify listener presents, so the two can never drift apart.
+    /// attachment, and per the API docs PXRRS needs it to authenticate an
+    /// HTTPS replyURL before it will post anything there. Without it the
+    /// subscription still registers — getSubscriptionData happily reports the
+    /// replyAddress — but every notification is dropped at the TLS handshake,
+    /// which looks exactly like the terminal never firing an event.
+    ///
+    /// Shaped after PAX's working curl recipe:
+    ///   curl 'https://&lt;terminal&gt;:9090/subscribe?replyURL=&lt;ip&gt;%3A8080' \
+    ///        --form 'fileName=@server_pci7.cert'
+    /// — the replyURL is bare host:port (no scheme, no path) and the multipart
+    /// field is named "fileName". The certificate sent is exported from the
+    /// very keystore the notify listener presents, so the two can never drift
+    /// apart.
     /// </summary>
     private async Task<bool> SubscribeAsync()
     {
         _cyclesSinceSubscribe = 0;
-        var path = $"/subscribe?replyURL={Uri.EscapeDataString(_notifyUrl)}";
+        var notifyUri = new Uri(_notifyUrl);
+        var reply = $"{notifyUri.Host}:{notifyUri.Port}";
+        var path = $"/subscribe?replyURL={Uri.EscapeDataString(reply)}";
 
         var certificate = LoadNotifyCertificate();
         if (certificate is null) return await PostAsync(path, null);
@@ -713,8 +728,8 @@ public sealed class JpxRestLink : ITerminalLink
             using var form = new System.Net.Http.MultipartFormDataContent();
             var part = new StringContent(pem, Encoding.ASCII);
             part.Headers.ContentType =
-                new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-x509-ca-cert");
-            form.Add(part, "filename", "notify-server.cert");
+                new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+            form.Add(part, "fileName", "server_pci7.cert");
 
             var response = await _http.PostAsync($"{_baseUrl}{path}", form);
             var body = await response.Content.ReadAsStringAsync();

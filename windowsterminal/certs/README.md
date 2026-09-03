@@ -13,3 +13,16 @@ Regenerate from the JPxSerialServer bundle if missing:
 
 Integration-cert access may be feature-restricted by PAX; production merchants
 replace it with a merchant CA cert via the setMerchantCACertificate API.
+
+# PXRRS notify-callback server identity
+
+`pxrrs-notify-server.p12` is the server identity the register's notify
+listener presents (PAX Multilane `*.pax.com`), and the certificate that gets
+attached to `/subscribe` (curl equivalent: `--form 'fileName=@server_pci7.cert'`).
+Password: `pax12345`. Both .p12 files are gitignored — regenerate from the PAX
+PCI7 bundle (`key/Certificate_PCI7/`):
+
+    openssl pkcs12 -export \
+      -in server_pci7.cert -inkey server.key \
+      -out pxrrs-notify-server.p12 -name pxrrs-notify \
+      -passout pass:pax12345

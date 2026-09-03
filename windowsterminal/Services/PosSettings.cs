@@ -31,7 +31,8 @@ public sealed class PosSettings
     public const string ModePcl = "pcl";
 
     public const int DefaultPxrrsPort = 9090;
-    public const int DefaultNotifyPort = 8282;
+    public const int DefaultNotifyPort = 8080;
+    public const string DefaultTerminalHost = "192.168.1.206";
     public const string DefaultStartForm = "StartTransaction";
     public const string StockStartForm = "PaymentScreen";
     public const string DefaultCertPassword = "pax12345";
@@ -42,10 +43,11 @@ public sealed class PosSettings
     // ----- jpxss mode: PXRRS on the terminal, or JPxSerialServer on this PC -----
 
     /// <summary>
-    /// Terminal IP for wireless PXRRS (e.g. 192.168.1.234), or 127.0.0.1 when
-    /// going through JPxSerialServer over USB on this machine.
+    /// Terminal IP for wireless PXRRS, or 127.0.0.1 when going through
+    /// JPxSerialServer over USB on this machine. Defaults to the demo A3700's
+    /// address; change it in the setup screen (F9).
     /// </summary>
-    public string TerminalHost { get; set; } = "";
+    public string TerminalHost { get; set; } = DefaultTerminalHost;
 
     public int TerminalPort { get; set; } = DefaultPxrrsPort;
 
