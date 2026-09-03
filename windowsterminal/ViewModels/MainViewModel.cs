@@ -261,7 +261,7 @@ public partial class MainViewModel : ViewModelBase
             RegisterStage.Checkout => new[]
             {
                 new TKey(1, "Bloomingdale's Card/ Bloomingdale's Pay", true),
-                new TKey(2, "", false),
+                new TKey(2, "Biometric Pay", true),
                 new TKey(3, "", false),
                 new TKey(4, "", false),
                 new TKey(5, "Gift Card/Rewards Happy Returns", true),
@@ -401,6 +401,11 @@ public partial class MainViewModel : ViewModelBase
         {
             case 1:
                 StartCardTender("BD_LOYALLIST");
+                break;
+            case 2:
+                // Biometric Pay: navigate the terminal to the PaymentScreen
+                // form; the Face/Palm buttons there fire the tender event back.
+                StartCardTender("BIOMETRIC");
                 break;
             case 5:
                 Status = "Gift Card / Rewards — have customer swipe the card";

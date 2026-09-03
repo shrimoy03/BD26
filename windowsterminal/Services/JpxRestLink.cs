@@ -500,6 +500,17 @@ public sealed class JpxRestLink : ITerminalLink
             return await PostAsync("/displayForm?formName=ThankYouScreen", null);
         }
 
+        // "Biometric Pay" on the register's checkout: navigate the terminal to
+        // the stock payment-options form. The Face/Palm buttons on it fire the
+        // IS_TRANS_STARTED tender FireEvent, which comes back through the
+        // notify callback (or the trigger-variable poll) and starts the real
+        // FACE/PALM flow below. PxRetailer keeps the screen until then.
+        if (message.Type == PosMessageTypes.StartPayment && message.Method == "BIOMETRIC")
+        {
+            await SetForegroundAsync(true);
+            return await PostAsync($"/displayForm?formName={PosSettings.StockStartForm}", null);
+        }
+
         // A biometric tender is captured by WinkPay, which is a separate Android
         // app. PxRetailer owns the display, so it has to drop the foreground or
         // the customer never sees WinkPay come up.
