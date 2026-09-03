@@ -635,6 +635,23 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Manual rescue for PxRetailer launching into the background on the PAX:
+    /// pushes FOREGROUND=true over the REST link.
+    /// </summary>
+    [RelayCommand]
+    private async Task BringRetailerForwardAsync()
+    {
+        if (_link is null)
+        {
+            Status = "No terminal link configured";
+            return;
+        }
+        Status = "Bringing PxRetailer to the foreground…";
+        var ok = await _link.SendAsync(new PosMessage { Type = PosMessageTypes.ShowRetailer });
+        Status = ok ? "PxRetailer brought to the foreground" : "Could not reach the terminal";
+    }
+
     [RelayCommand]
     private void OpenSetup()
     {

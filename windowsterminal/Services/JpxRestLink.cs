@@ -500,6 +500,13 @@ public sealed class JpxRestLink : ITerminalLink
             return await PostAsync("/displayForm?formName=ThankYouScreen", null);
         }
 
+        // Manual rescue: PxRetailer sometimes launches into the background;
+        // this yanks it back in front of whatever is on the terminal.
+        if (message.Type == PosMessageTypes.ShowRetailer)
+        {
+            return await SetForegroundAsync(true);
+        }
+
         // "Biometric Pay" on the register's checkout: navigate the terminal to
         // the stock payment-options form. The Face/Palm buttons on it fire the
         // IS_TRANS_STARTED tender FireEvent, which comes back through the

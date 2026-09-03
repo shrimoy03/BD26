@@ -38,6 +38,7 @@ public static class PosMessageTypes
     public const string CancelPayment = "CANCEL_PAYMENT";
     public const string DisplayCart = "DISPLAY_CART";
     public const string ShowThanks = "SHOW_THANKS";
+    public const string ShowRetailer = "SHOW_RETAILER";
 
     // PxRetailer form -> Terminal (PAYMENTSTATUS FireEvent, via PXRRS notify)
     public const string TenderSelected = "TENDER_SELECTED";

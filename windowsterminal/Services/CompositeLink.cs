@@ -74,6 +74,7 @@ public sealed class CompositeLink : ITerminalLink
             case PosMessageTypes.StartPayment:
                 return await _rest.SendAsync(message);
             case PosMessageTypes.ShowThanks:
+            case PosMessageTypes.ShowRetailer:
                 return await _rest.SendAsync(message);
             case PosMessageTypes.CancelPayment:
             case PosMessageTypes.DisplayCart:
