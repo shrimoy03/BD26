@@ -654,6 +654,38 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    private int _faceTestSeq;
+
+    /// <summary>
+    /// Bench test: launch WinkPay face capture directly (the same
+    /// START_PAYMENT FACE the Face button on PxRetailer would trigger),
+    /// without waiting on the PXRRS subscription. The register does not enter
+    /// a tender for it, so the capture result is ignored.
+    /// </summary>
+    [RelayCommand]
+    private async Task TestWinkPayFaceAsync()
+    {
+        if (_link is null)
+        {
+            Status = "No terminal link configured";
+            return;
+        }
+        var amount = Balance > 0 ? Balance : 1.00m;
+        var orderId = $"TEST-FACE-{++_faceTestSeq}";
+        Status = "Launching WinkPay face capture…";
+        var ok = await _link.SendAsync(new PosMessage
+        {
+            Type = PosMessageTypes.StartPayment,
+            OrderId = orderId,
+            AmountCents = (long)Math.Round(amount * 100),
+            Currency = "USD",
+            Method = "FACE",
+        });
+        Status = ok
+            ? $"WinkPay face launch sent · {orderId} · {Money.Format(amount)}"
+            : "Could not reach WinkPay";
+    }
+
     /// <summary>
     /// Manual rescue for PxRetailer launching into the background on the PAX:
     /// pushes FOREGROUND=true over the REST link.

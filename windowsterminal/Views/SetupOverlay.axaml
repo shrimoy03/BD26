@@ -39,6 +39,11 @@
                                 <TextBlock Text="Cancel" FontSize="13" />
                             </Button>
                             <Button Classes="pos" Height="44" Padding="22,0"
+                                    Command="{Binding TestWinkPayFaceCommand}"
+                                    ToolTip.Tip="Sends START_PAYMENT method=FACE straight to the winkpos app — tests the WinkPay launch without the PxRetailer Face button or the PXRRS subscription.">
+                                <TextBlock Text="Test WinkPay Face" FontSize="13" />
+                            </Button>
+                            <Button Classes="pos" Height="44" Padding="22,0"
                                     Command="{Binding BringRetailerForwardCommand}"
                                     ToolTip.Tip="PxRetailer sometimes launches behind other apps on the PAX — this pushes FOREGROUND=true to bring it back in front.">
                                 <TextBlock Text="Show PxRetailer" FontSize="13" />

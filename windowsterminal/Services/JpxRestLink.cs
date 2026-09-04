@@ -542,10 +542,37 @@ public sealed class JpxRestLink : ITerminalLink
         // the customer never sees WinkPay come up.
         if (message.Type == PosMessageTypes.StartPayment && message.Method is "FACE" or "PALM")
         {
-            // Phase 2 + 3 of the sequence diagram, as mailboxes: publish the
-            // order, then raise the handshake flag WinkPay is polling. Order
-            // matters — the flag must not go up before the details are readable.
             Console.WriteLine($"[JpxRestLink] {message.Method} tender — handing the sale to WinkPay");
+
+            // Custom package installed: run the diagram's Phase 2 verbatim —
+            // one batch publishes the order and shows StartTransaction, and the
+            // package raises IS_TRANS_STARTED=1 itself (PXRRS notifies both
+            // parties). The register does not touch the state flag.
+            if (_startForm == FormStart)
+            {
+                var batch = new object[]
+                {
+                    new
+                    {
+                        commandName = "SetVariable",
+                        variables = new[] { new { name = VarRequest, value = PosJson.Serialize(message) } },
+                    },
+                    new { commandName = "DisplayForm", formName = FormStart },
+                };
+                if (await PostAsync("/sendBatchCmd", JsonSerializer.Serialize(batch)))
+                {
+                    StartResultPolling(); // fallback if the =2 notify never lands
+                    var handed = await SetForegroundAsync(false);
+                    Console.WriteLine(
+                        $"[JpxRestLink] Phase-2 batch sent ({VarRequest} + DisplayForm {FormStart}), PxRetailer backgrounded={handed}");
+                    return handed;
+                }
+                Console.WriteLine("[JpxRestLink] Phase-2 batch failed — falling back to the mailbox handshake");
+            }
+
+            // Stock package: mailboxes stand in for the notify — publish the
+            // order, then raise the handshake flag WinkPay is polling. Order
+            // matters; the flag must not go up before the details are readable.
             var published = await SetVariableAsync(_requestVar, PosJson.Serialize(message));
             var flagged = await SetVariableAsync(_stateVar, StateOrderReady);
             if (!published || !flagged)

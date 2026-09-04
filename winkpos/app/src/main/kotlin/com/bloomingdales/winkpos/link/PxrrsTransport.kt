@@ -154,12 +154,11 @@ class PxrrsTransport(
             if (alive && !subscribed) {
                 // Both are best-effort. The sale runs through the variable
                 // mailboxes, so neither the foreground flag (absent on some
-                // packages) nor the notify subscription (PXRRS never posts to
-                // it on this terminal) may gate the link — treating them as
-                // required would leave the app permanently "disconnected" and
-                // the mailbox loop would never run.
+                // packages) nor the notify subscription may gate the link —
+                // treating them as required would leave the app permanently
+                // "disconnected" and the mailbox loop would never run.
                 setVariable(VAR_FOREGROUND, "false")
-                post("/subscribe?replyURL=http://127.0.0.1:$notifyPort/notify", null)
+                subscribe()
                 subscribed = true
             }
 
@@ -176,17 +175,91 @@ class PxrrsTransport(
         }
     }
 
+    // ----- Subscribe (Phase 1) -----
+
+    /**
+     * Shaped after PAX's working curl recipe (verified against a live A3700
+     * from the register side — Subscribe returns Success and the terminal
+     * records the replyAddress):
+     *
+     *   curl 'https://<terminal>:9090/subscribe?replyURL=<host>%3A<port>' \
+     *        --form 'fileName=@server_pci7.cert'
+     *
+     * The replyURL is bare host:port (no scheme, no path) and the callback
+     * server's certificate rides along as a multipart part named "fileName" —
+     * PXRRS needs it to authenticate the HTTPS callback before it will post
+     * anything there. The PEM is extracted from the very keystore the notify
+     * listener serves TLS with, so the two can never drift apart. With no
+     * keystore bundled this degrades to the old bare subscribe.
+     */
+    private fun subscribe(): Boolean {
+        val reply = java.net.URLEncoder.encode("127.0.0.1:$notifyPort", "UTF-8")
+        val path = "/subscribe?replyURL=$reply"
+        val pem = notifyCertPem() ?: return post(path, null)
+
+        return try {
+            val form = okhttp3.MultipartBody.Builder()
+                .setType(okhttp3.MultipartBody.FORM)
+                .addFormDataPart(
+                    "fileName",
+                    "server_pci7.cert",
+                    pem.toRequestBody("application/octet-stream".toMediaType()),
+                )
+                .build()
+            http.newCall(Request.Builder().url("$baseUrl$path").post(form).build())
+                .execute().use { response ->
+                    val text = response.body?.string().orEmpty()
+                    val ok = response.isSuccessful &&
+                        runCatching { JSONObject(text).optString("resultCode") == "0" }.getOrNull() == true
+                    Log.d(TAG, "subscribe (with callback cert) -> $text")
+                    ok
+                }
+        } catch (e: Exception) {
+            Log.w(TAG, "subscribe with certificate failed: ${e.message}")
+            post(path, null)
+        }
+    }
+
+    /** The notify keystore, or null when the asset is not bundled. */
+    private fun loadNotifyKeystore(): KeyStore? = try {
+        context?.assets?.open(NOTIFY_CERT_ASSET)?.use { stream ->
+            KeyStore.getInstance("PKCS12").apply {
+                load(stream, NOTIFY_CERT_PASSWORD.toCharArray())
+            }
+        }
+    } catch (e: Exception) {
+        Log.w(TAG, "no notify keystore ($NOTIFY_CERT_ASSET): ${e.message}")
+        null
+    }
+
+    /** PEM of the notify listener's certificate, for the subscribe attachment. */
+    private fun notifyCertPem(): String? = try {
+        loadNotifyKeystore()?.let { store ->
+            val alias = store.aliases().toList().firstOrNull() ?: return null
+            val der = store.getCertificate(alias)?.encoded ?: return null
+            val b64 = android.util.Base64.encodeToString(der, android.util.Base64.NO_WRAP)
+            buildString {
+                append("-----BEGIN CERTIFICATE-----\n")
+                b64.chunked(64).forEach { append(it).append('\n') }
+                append("-----END CERTIFICATE-----\n")
+            }
+        }
+    } catch (e: Exception) {
+        Log.w(TAG, "could not export notify certificate: ${e.message}")
+        null
+    }
+
     // ----- Notify listener -----
 
     /**
      * Minimal HTTP/1.1 server, just enough for PXRRS's `POST /notify` with a
-     * small JSON body. Not exposed off-device: bound to loopback.
+     * small JSON body. Not exposed off-device: bound to loopback. Serves TLS
+     * with the bundled PAX identity when present (PXRRS is not known to
+     * deliver to a plain-http callback), plain HTTP otherwise.
      */
     private fun notifyServerLoop() {
         try {
-            val server = ServerSocket()
-            server.reuseAddress = true
-            server.bind(InetSocketAddress("127.0.0.1", notifyPort))
+            val server = createNotifyServerSocket()
             notifySocket = server
             while (running) {
                 val client = server.accept()
@@ -227,6 +300,31 @@ class PxrrsTransport(
         } catch (e: Exception) {
             if (running) Log.w(TAG, "notify server died: ${e.message}")
         }
+    }
+
+    /**
+     * TLS server socket with the bundled PAX identity — the same one whose
+     * certificate went up with /subscribe — or a plain socket without it.
+     */
+    private fun createNotifyServerSocket(): ServerSocket {
+        val store = loadNotifyKeystore()
+        val socket = if (store != null) {
+            try {
+                val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
+                    .apply { init(store, NOTIFY_CERT_PASSWORD.toCharArray()) }
+                val ssl = SSLContext.getInstance("TLS")
+                    .apply { init(kmf.keyManagers, null, SecureRandom()) }
+                ssl.serverSocketFactory.createServerSocket()
+            } catch (e: Exception) {
+                Log.w(TAG, "notify TLS setup failed, serving plain http: ${e.message}")
+                ServerSocket()
+            }
+        } else {
+            ServerSocket()
+        }
+        socket.reuseAddress = true
+        socket.bind(InetSocketAddress("127.0.0.1", notifyPort))
+        return socket
     }
 
     private fun handleNotify(body: String) {
@@ -337,6 +435,14 @@ class PxrrsTransport(
         /** PKCS#12 in assets/, derived from the PAX bundle's integrationCustomer.jks. */
         const val CLIENT_CERT_ASSET = "pxrrs-integration-client.p12"
         const val CLIENT_CERT_PASSWORD = "pax12345"
+
+        /**
+         * PKCS#12 in assets/ with the PAX Multilane server identity the notify
+         * listener presents — same file as windowsterminal/certs/, copy it in:
+         *   cp windowsterminal/certs/pxrrs-notify-server.p12 winkpos/app/src/main/assets/
+         */
+        const val NOTIFY_CERT_ASSET = "pxrrs-notify-server.p12"
+        const val NOTIFY_CERT_PASSWORD = "pax12345"
 
         /**
          * PXRRS serves HTTPS with PAX's self-signed chain and asks for a client
