@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.bloomingdales.winkpos.link.PosLink
+import com.bloomingdales.winkpos.link.PosLinkService
 import com.wink.winkpay.WinkPaySdk
 import com.wink.winkpay.embedded.EmbeddedCheckinRequest
 import com.wink.winkpay.embedded.EmbeddedCheckinResult
@@ -43,6 +44,12 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_welcome)
         enterKioskMode()
+
+        // Guaranteed-foreground moment: pin the register link's process in
+        // case the Application-time start was rejected as a background start.
+        if (PosLink.isEnabled) {
+            PosLinkService.start(this)
+        }
 
         statusText = findViewById(R.id.statusText)
 

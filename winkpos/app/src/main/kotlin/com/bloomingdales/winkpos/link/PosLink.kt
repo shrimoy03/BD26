@@ -1,9 +1,13 @@
 package com.bloomingdales.winkpos.link
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import com.bloomingdales.winkpos.BuildConfig
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -139,28 +143,11 @@ object PosLink {
                 listeners.forEach { it.onStartPayment(orderId, amount) }
 
                 // FACE/PALM = the customer already picked a biometric tender
-                // on the PxRetailer form — bring this app to the foreground
-                // and go straight into WinkPay capture. Needs the
-                // "display over other apps" appop when we're backgrounded:
-                //   adb shell appops set com.bloomingdales.winkpos SYSTEM_ALERT_WINDOW allow
+                // on the PxRetailer form — bring this app to the foreground and
+                // go straight into WinkPay capture, even from the background.
                 val biometric = message.method?.lowercase()
                 if (biometric == "face" || biometric == "palm") {
-                    appContext?.let { ctx ->
-                        val intent = android.content.Intent(
-                            ctx,
-                            com.bloomingdales.winkpos.WelcomeActivity::class.java,
-                        )
-                            .addFlags(
-                                android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
-                                    android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP,
-                            )
-                            .putExtra(EXTRA_AUTO_BIOMETRIC, biometric)
-                        try {
-                            ctx.startActivity(intent)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "foreground launch failed: ${e.message}")
-                        }
-                    }
+                    appContext?.let { ctx -> launchCapture(ctx, biometric) }
                 }
             }
             PosMessage.TYPE_CANCEL_PAYMENT -> {
@@ -171,11 +158,77 @@ object PosLink {
         }
     }
 
+    /**
+     * Bring the capture screen up from anywhere — including a backgrounded
+     * process sitting on the home screen. A plain startActivity() is refused
+     * by Android's background-activity-launch rules (verified: BAL_BLOCK), so
+     * this fires a high-priority notification with a full-screen intent, the
+     * mechanism the platform sanctions for exactly this (incoming calls,
+     * alarms): when the screen is on, the system launches the intent's
+     * activity immediately. A direct startActivity is still attempted first —
+     * it succeeds within the post-foreground grace window and when the overlay
+     * appop happens to be granted, which is quicker when it works.
+     */
+    private fun launchCapture(ctx: Context, biometric: String) {
+        val intent = android.content.Intent(
+            ctx,
+            com.bloomingdales.winkpos.WelcomeActivity::class.java,
+        )
+            .addFlags(
+                android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                    android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP,
+            )
+            .putExtra(EXTRA_AUTO_BIOMETRIC, biometric)
+
+        try {
+            ctx.startActivity(intent)
+        } catch (e: Exception) {
+            Log.w(TAG, "direct launch refused (expected when backgrounded): ${e.message}")
+        }
+
+        // Full-screen intent: reliably launches from the background.
+        try {
+            val nm = ctx.getSystemService(NotificationManager::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                nm.createNotificationChannel(
+                    NotificationChannel(
+                        CAPTURE_CHANNEL_ID,
+                        "WinkPay payment",
+                        NotificationManager.IMPORTANCE_HIGH,
+                    ),
+                )
+            }
+            val fsi = PendingIntent.getActivity(
+                ctx,
+                1,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            val notification = NotificationCompat.Builder(ctx, CAPTURE_CHANNEL_ID)
+                .setSmallIcon(com.bloomingdales.winkpos.R.drawable.ic_launcher_bloomies)
+                .setContentTitle("WinkPay")
+                .setContentText("Starting payment…")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_CALL)
+                .setFullScreenIntent(fsi, true)
+                .setAutoCancel(true)
+                .setOngoing(false)
+                .build()
+            nm.notify(CAPTURE_NOTIFICATION_ID, notification)
+            // Clear it so it doesn't linger once the activity is up.
+            mainHandler.postDelayed({ nm.cancel(CAPTURE_NOTIFICATION_ID) }, 4_000)
+        } catch (e: Exception) {
+            Log.w(TAG, "full-screen launch failed: ${e.message}")
+        }
+    }
+
     private fun onMain(block: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) block() else mainHandler.post(block)
     }
 
     private const val TAG = "PosLink"
+    private const val CAPTURE_CHANNEL_ID = "winkpay-capture"
+    private const val CAPTURE_NOTIFICATION_ID = 42
 
     /** Intent extra: "face" | "palm" — launch straight into WinkPay capture. */
     const val EXTRA_AUTO_BIOMETRIC = "autoBiometric"

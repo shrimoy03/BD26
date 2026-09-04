@@ -5,6 +5,17 @@
     <!-- CAMERA/INTERNET are contributed by the SDK manifest; CAMERA still has
          to be requested at runtime by this app before launching check-in. -->
 
+    <!-- Keep the register link alive in the background (PosLinkService). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Launch the capture screen from the background when the register pushes
+         a tender (full-screen-intent notification, the incoming-call pattern).
+         SYSTEM_ALERT_WINDOW is the BAL exemption used as a secondary path. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <!-- Demo: plain ws:// to the register (localhost via adb reverse, or LAN). -->
     <application
         android:name=".WinkPosApp"
@@ -46,5 +57,15 @@
             android:exported="false"
             android:screenOrientation="landscape"
             tools:ignore="LockedOrientationActivity" />
+
+        <!-- Pins the process (and the PosLink socket) while backgrounded. -->
+        <service
+            android:name=".link.PosLinkService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="POS register link — keeps the payment command socket alive while backgrounded" />
+        </service>
     </application>
 </manifest>
