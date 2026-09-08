@@ -264,21 +264,29 @@ public partial class SetupViewModel : ViewModelBase
         && !TerminalHost.Contains('/');
 
     /// <summary>The edited fields as a <see cref="PosSettings"/>.</summary>
-    private PosSettings Draft() => new()
+    /// <summary>
+    /// Start from the settings on disk and overlay only the fields this screen
+    /// edits — anything the UI does not manage (trigger variable, mailbox
+    /// names, notify certificate, …) must survive a Save & reconnect instead
+    /// of silently resetting to defaults.
+    /// </summary>
+    private PosSettings Draft()
     {
-        LinkMode = Mode,
-        TerminalHost = TerminalHost.Trim(),
-        TerminalPort = ParsePort(TerminalPort, PosSettings.DefaultPxrrsPort),
-        UseTls = UseTls,
-        NotifyPort = ParsePort(NotifyPort, PosSettings.DefaultNotifyPort),
-        NotifyHost = NotifyHost.Trim(),
-        StartForm = string.IsNullOrWhiteSpace(StartForm) ? PosSettings.DefaultStartForm : StartForm.Trim(),
-        ClientCertPath = ClientCertPath.Trim(),
-        ClientCertPassword = ClientCertPassword,
-        WebSocketPort = ParsePort(WebSocketPort, Services.TerminalLink.DefaultPort),
-        PclHost = PclHost.Trim(),
-        PclPort = ParsePort(PclPort, PclSocketLink.DefaultPort),
-    };
+        var s = PosSettings.Load();
+        s.LinkMode = Mode;
+        s.TerminalHost = TerminalHost.Trim();
+        s.TerminalPort = ParsePort(TerminalPort, PosSettings.DefaultPxrrsPort);
+        s.UseTls = UseTls;
+        s.NotifyPort = ParsePort(NotifyPort, PosSettings.DefaultNotifyPort);
+        s.NotifyHost = NotifyHost.Trim();
+        s.StartForm = string.IsNullOrWhiteSpace(StartForm) ? PosSettings.DefaultStartForm : StartForm.Trim();
+        s.ClientCertPath = ClientCertPath.Trim();
+        s.ClientCertPassword = ClientCertPassword;
+        s.WebSocketPort = ParsePort(WebSocketPort, Services.TerminalLink.DefaultPort);
+        s.PclHost = PclHost.Trim();
+        s.PclPort = ParsePort(PclPort, PclSocketLink.DefaultPort);
+        return s;
+    }
 
     private void LoadFrom(PosSettings s)
     {

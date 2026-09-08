@@ -124,7 +124,7 @@ public sealed class PosSettings
     /// Create it in PxDesigner's variable manager (or reuse a spare stock
     /// STR.* variable) and set the same name here. Blank disables it.
     /// </summary>
-    public string BiometricTriggerVariable { get; set; } = "";
+    public string BiometricTriggerVariable { get; set; } = "STR.GENERIC_2";
 
     // ----- Mailbox variables -----
     //

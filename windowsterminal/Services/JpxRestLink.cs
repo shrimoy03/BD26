@@ -570,7 +570,7 @@ public sealed class JpxRestLink : ITerminalLink
         // out, so halving them makes the button visibly snappier.
         if (message.Type == PosMessageTypes.StartPayment && message.Method == "BIOMETRIC")
         {
-            var biometricBatch = new object[]
+            var biometricBatch = JsonSerializer.Serialize(new object[]
             {
                 new
                 {
@@ -578,8 +578,17 @@ public sealed class JpxRestLink : ITerminalLink
                     variables = new[] { new { name = VarForeground, value = "true" } },
                 },
                 new { commandName = "DisplayForm", formName = PosSettings.StockStartForm },
-            };
-            var shown = await PostAsync("/sendBatchCmd", JsonSerializer.Serialize(biometricBatch));
+            });
+            // PxRetailer transiently refuses SetVariable/DisplayForm right
+            // after being backgrounded (observed while WinkPay still owned the
+            // screen) — one short retry rides out that window.
+            var shown = await PostAsync("/sendBatchCmd", biometricBatch);
+            if (!shown)
+            {
+                Console.WriteLine("[JpxRestLink] payment-options batch refused — retrying once");
+                await Task.Delay(500);
+                shown = await PostAsync("/sendBatchCmd", biometricBatch);
+            }
             if (shown)
             {
                 _foreground = true;
