@@ -50,6 +50,7 @@
     <string name="no_card_on_file">No card on file</string>
     <string name="pay">Pay</string>
     <string name="processing">Processing…</string>
+    <string name="processing_payment">Processing your payment…</string>
     <string name="payment_failed">There was a problem processing your payment.</string>
     <string name="reward_applied">$10.00 Reward applied</string>
     <string name="reward_needs_items">Scan items before redeeming the Reward.</string>

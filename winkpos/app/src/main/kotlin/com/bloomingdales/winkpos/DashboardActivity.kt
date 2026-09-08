@@ -289,6 +289,7 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         if (paying || totalCents <= 0) return
         paying = true
         payButton.text = getString(R.string.processing)
+        findViewById<View>(R.id.processingOverlay).visibility = View.VISIBLE
         renderTotals()
 
         val amount = totalCents
@@ -338,6 +339,7 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
                     }
                     paying = false
                     payButton.text = getString(R.string.pay)
+                    findViewById<View>(R.id.processingOverlay).visibility = View.GONE
                     renderItems()
                     renderTotals()
                     toast(e.message ?: getString(R.string.payment_failed))

@@ -311,6 +311,17 @@ public partial class MainViewModel : ViewModelBase
                 new TKey(7, "", false),
                 new TKey(8, "", false),
             },
+            RegisterStage.Complete => new[]
+            {
+                new TKey(1, "New Sale", true),
+                new TKey(2, "", false),
+                new TKey(3, "", false),
+                new TKey(4, "", false),
+                new TKey(5, "", false),
+                new TKey(6, "", false),
+                new TKey(7, "", false),
+                new TKey(8, "", false),
+            },
             _ => Enumerable.Range(1, 8).Select(i => new TKey(i, "", false)).ToArray(),
         };
     }
@@ -335,6 +346,12 @@ public partial class MainViewModel : ViewModelBase
                 break;
             case RegisterStage.CardTender:
                 PressCardKey(key.Index);
+                break;
+            case RegisterStage.Complete when key.Index == 1:
+                // Instant reset: NewSale's cart sync also reclaims PxRetailer's
+                // foreground and paints its idle screen in one transition, so
+                // the cashier doesn't wait out the auto-reset.
+                NewSale();
                 break;
             case RegisterStage.SignatureWait when key.Index == 4:
                 SignatureSecondsLeft = 89;
