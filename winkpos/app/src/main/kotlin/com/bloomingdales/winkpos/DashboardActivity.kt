@@ -353,7 +353,9 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
 
     private fun signOut() {
         // Don't leave the register hanging on an awaiting-terminal banner.
-        if (registerMode) PosLink.sendResult(PosMessage.STATUS_CANCELLED)
+        // The reason lets the register tell a walk-away (void the sale and
+        // start fresh) from a capture cancel (retry the same sale).
+        if (registerMode) PosLink.sendResult(PosMessage.STATUS_CANCELLED, reason = "SIGNED_OUT")
         CheckinSession.clear()
         finish()
     }

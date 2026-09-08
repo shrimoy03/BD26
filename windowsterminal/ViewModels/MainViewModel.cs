@@ -919,6 +919,14 @@ public partial class MainViewModel : ViewModelBase
                 Stage = RegisterStage.Checkout;
                 Refresh();
                 break;
+            case "CANCELLED" when m.Reason == "SIGNED_OUT":
+                // The customer signed out of WinkPay mid-sale — void the whole
+                // sale and reset for the next customer. The new sale's cart
+                // sync also brings PxRetailer back to its idle screen.
+                Console.WriteLine("[Register] customer signed out — voiding the sale");
+                NewSale();
+                Status = "Customer signed out — sale voided";
+                break;
             case "CANCELLED":
                 Status = "Payment cancelled on customer terminal";
                 Stage = RegisterStage.Checkout;
