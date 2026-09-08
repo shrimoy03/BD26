@@ -18,7 +18,7 @@ namespace MerchantTerminal.Services;
 /// the terminal through the PxRetailer REST service, using form variables as
 /// mailboxes.
 ///
-///   startup  -> POST /setVariable BOOL.FOREGROUND=false; POST /subscribe
+///   startup  -> POST /setVariable BOOL.FOREGROUND=true; POST /subscribe
 ///   sale     -> POST /sendBatchCmd [SetVariable START_TRANS_REQ_DATA=json,
 ///               DisplayForm StartTransaction]
 ///   result   <- notify IS_TRANS_STARTED=2 -> GET /getVariable TRANS_RESULT
@@ -456,7 +456,11 @@ public sealed class JpxRestLink : ITerminalLink
 
             if (alive && !_subscribed)
             {
-                var foregroundOk = await SetForegroundAsync(false);
+                // PxRetailer is the default start config on the demo bench:
+                // bring it to the foreground on connect (it sometimes launches
+                // behind other apps). It only drops the foreground later,
+                // during a biometric handoff to WinkPay.
+                var foregroundOk = await SetForegroundAsync(true);
                 _subscribed = await SubscribeAsync();
                 // Subscribing is what actually matters; a package that does not
                 // define the foreground flag should not fail the whole link.

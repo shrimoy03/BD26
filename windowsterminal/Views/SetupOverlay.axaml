@@ -25,42 +25,43 @@
                 </Border>
 
                 <!-- ===== Footer ===== -->
+                <!-- Two rows: the path trims on its own line, and the buttons
+                     wrap instead of overflowing the dialog when they don't fit. -->
                 <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0"
-                        Padding="26,16">
-                    <DockPanel>
-                        <TextBlock DockPanel.Dock="Left" Classes="mono" Text="{Binding Setup.SettingsPath}"
+                        Padding="26,12,26,14">
+                    <StackPanel Spacing="10">
+                        <TextBlock Classes="mono" Text="{Binding Setup.SettingsPath}"
                                    FontSize="10.5" Foreground="{DynamicResource Dim}"
-                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   TextTrimming="CharacterEllipsis"
                                    ToolTip.Tip="Settings are saved here. Copy this file to roll out another register." />
-                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="10"
-                                    HorizontalAlignment="Right">
-                            <Button Classes="ghost" Height="44" Padding="22,0"
+                        <WrapPanel HorizontalAlignment="Right">
+                            <Button Classes="ghost" Height="44" Padding="20,0" Margin="0,0,10,0"
                                     Command="{Binding Setup.CancelCommand}">
                                 <TextBlock Text="Cancel" FontSize="13" />
                             </Button>
-                            <Button Classes="pos" Height="44" Padding="22,0"
+                            <Button Classes="pos" Height="44" Padding="20,0" Margin="0,0,10,0"
                                     Command="{Binding TestWinkPayFaceCommand}"
                                     ToolTip.Tip="Sends START_PAYMENT method=FACE straight to the winkpos app — tests the WinkPay launch without the PxRetailer Face button or the PXRRS subscription.">
                                 <TextBlock Text="Test WinkPay Face" FontSize="13" />
                             </Button>
-                            <Button Classes="pos" Height="44" Padding="22,0"
+                            <Button Classes="pos" Height="44" Padding="20,0" Margin="0,0,10,0"
                                     Command="{Binding BringRetailerForwardCommand}"
                                     ToolTip.Tip="PxRetailer sometimes launches behind other apps on the PAX — this pushes FOREGROUND=true to bring it back in front.">
                                 <TextBlock Text="Show PxRetailer" FontSize="13" />
                             </Button>
-                            <Button Classes="pos" Height="44" Padding="22,0"
+                            <Button Classes="pos" Height="44" Padding="20,0" Margin="0,0,10,0"
                                     IsEnabled="{Binding !Setup.IsBusy}"
                                     Command="{Binding Setup.TestCommand}">
                                 <TextBlock Text="{Binding Setup.BusyLabel}" FontSize="13" />
                             </Button>
-                            <Button Classes="cta" Height="44" Padding="26,0"
+                            <Button Classes="cta" Height="44" Padding="24,0"
                                     IsEnabled="{Binding !Setup.IsBusy}"
                                     Command="{Binding Setup.SaveCommand}">
                                 <TextBlock Text="Save &amp; reconnect" FontSize="13" FontWeight="SemiBold"
                                            LetterSpacing="0.5" />
                             </Button>
-                        </StackPanel>
-                    </DockPanel>
+                        </WrapPanel>
+                    </StackPanel>
                 </Border>
 
                 <!-- ===== Body ===== -->

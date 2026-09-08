@@ -27,6 +27,18 @@
         <Style Selector="Button.item-tile:pressed /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="#E9E2C2" />
         </Style>
+
+        <!-- Without explicit hover/press styles the Fluent theme swaps in its
+             own light hover background, which makes the dark-red Done button
+             appear to vanish under the mouse. -->
+        <Style Selector="Button.tkey-done:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#A62D34" />
+            <Setter Property="TextElement.Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.tkey-done:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#5F0F18" />
+            <Setter Property="TextElement.Foreground" Value="White" />
+        </Style>
     </UserControl.Styles>
 
     <Panel>

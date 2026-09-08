@@ -58,6 +58,7 @@ public partial class MainViewModel : ViewModelBase
     private int _uid = 1;
     private int _txnBase = 40880;
     private string? _terminalOrderId;
+    private string? _awaitingMethod;
     private Action? _flowTimerAction;
 
     public MainViewModel() : this(null) { }
@@ -148,6 +149,14 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial bool IsAwaitingTerminal { get; set; }
+
+    /// <summary>
+    /// A terminal command is in flight. The key grid ignores presses and the
+    /// view shows a "Please wait" overlay, so a fast operator can't queue up
+    /// duplicate sends or interleave commands.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
     public partial int SignatureSecondsLeft { get; set; } = 89;
@@ -309,7 +318,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void PressTKey(TKey key)
     {
-        if (!key.IsEnabled) return;
+        if (IsBusy || !key.IsEnabled) return;
         switch (Stage)
         {
             case RegisterStage.Loyalty:
@@ -665,6 +674,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private async Task TestWinkPayFaceAsync()
     {
+        if (IsBusy) return;
         if (_link is null)
         {
             Status = "No terminal link configured";
@@ -673,17 +683,25 @@ public partial class MainViewModel : ViewModelBase
         var amount = Balance > 0 ? Balance : 1.00m;
         var orderId = $"TEST-FACE-{++_faceTestSeq}";
         Status = "Launching WinkPay face capture…";
-        var ok = await _link.SendAsync(new PosMessage
+        IsBusy = true;
+        try
         {
-            Type = PosMessageTypes.StartPayment,
-            OrderId = orderId,
-            AmountCents = (long)Math.Round(amount * 100),
-            Currency = "USD",
-            Method = "FACE",
-        });
-        Status = ok
-            ? $"WinkPay face launch sent · {orderId} · {Money.Format(amount)}"
-            : "Could not reach WinkPay";
+            var ok = await _link.SendAsync(new PosMessage
+            {
+                Type = PosMessageTypes.StartPayment,
+                OrderId = orderId,
+                AmountCents = (long)Math.Round(amount * 100),
+                Currency = "USD",
+                Method = "FACE",
+            });
+            Status = ok
+                ? $"WinkPay face launch sent · {orderId} · {Money.Format(amount)}"
+                : "Could not reach WinkPay";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     /// <summary>
@@ -693,14 +711,23 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private async Task BringRetailerForwardAsync()
     {
+        if (IsBusy) return;
         if (_link is null)
         {
             Status = "No terminal link configured";
             return;
         }
         Status = "Bringing PxRetailer to the foreground…";
-        var ok = await _link.SendAsync(new PosMessage { Type = PosMessageTypes.ShowRetailer });
-        Status = ok ? "PxRetailer brought to the foreground" : "Could not reach the terminal";
+        IsBusy = true;
+        try
+        {
+            var ok = await _link.SendAsync(new PosMessage { Type = PosMessageTypes.ShowRetailer });
+            Status = ok ? "PxRetailer brought to the foreground" : "Could not reach the terminal";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]
@@ -730,6 +757,7 @@ public partial class MainViewModel : ViewModelBase
         if (_link is { IsConnected: true })
         {
             _terminalOrderId = $"{TxnId}-{Payments.Count + 1}";
+            _awaitingMethod = method;
             IsAwaitingTerminal = true;
             // Snapshot on the UI thread — Balance sums the observable
             // collections, which must not be read from the thread pool.
@@ -742,18 +770,21 @@ public partial class MainViewModel : ViewModelBase
                 Method = method,
             };
             Console.WriteLine($"[Register] START_PAYMENT {method} {message.OrderId} amountCents={message.AmountCents}");
+            IsBusy = true;
             _ = Task.Run(async () =>
             {
                 var sent = await _link.SendAsync(message);
-                if (!sent)
+                OnUiThread(() =>
                 {
-                    OnUiThread(() =>
+                    IsBusy = false;
+                    if (!sent)
                     {
                         IsAwaitingTerminal = false;
                         _terminalOrderId = null;
+                        _awaitingMethod = null;
                         Status = "Customer terminal unreachable";
-                    });
-                }
+                    }
+                });
             });
         }
         else
@@ -791,6 +822,7 @@ public partial class MainViewModel : ViewModelBase
         }
         IsAwaitingTerminal = false;
         _terminalOrderId = null;
+        _awaitingMethod = null;
     }
 
     private void HandleTerminalMessage(PosMessage m)
@@ -807,6 +839,17 @@ public partial class MainViewModel : ViewModelBase
                 _ => null,
             };
             if (method is null) return;
+
+            // Idempotency: a spammed Face button (or the same press arriving
+            // via both the notify callback and the trigger-variable poll) must
+            // not relaunch WinkPay. BIOMETRIC is just the options page, so a
+            // tender choice while it is pending is the expected next step.
+            if (IsAwaitingTerminal && _awaitingMethod is "FACE" or "PALM" or "CARD")
+            {
+                Console.WriteLine(
+                    $"[Register] duplicate {method} tender ignored — {_awaitingMethod} already in flight");
+                return;
+            }
 
             if (Lines.Count == 0)
             {
@@ -837,15 +880,22 @@ public partial class MainViewModel : ViewModelBase
             Status = method == "CARD"
                 ? "Customer chose card — starting EMV"
                 : $"Customer chose {m.Method!.ToLowerInvariant()} — starting WinkPay";
-            var tenderCents = (long)Math.Round(Balance * 100);
-            Console.WriteLine($"[Register] START_PAYMENT {method} {_terminalOrderId} amountCents={tenderCents}");
-            _ = _link!.SendAsync(new PosMessage
+            _awaitingMethod = method;
+            var tenderMessage = new PosMessage
             {
                 Type = PosMessageTypes.StartPayment,
                 OrderId = _terminalOrderId,
-                AmountCents = tenderCents,
+                AmountCents = (long)Math.Round(Balance * 100),
                 Currency = "USD",
                 Method = method,
+            };
+            Console.WriteLine(
+                $"[Register] START_PAYMENT {method} {tenderMessage.OrderId} amountCents={tenderMessage.AmountCents}");
+            IsBusy = true;
+            _ = Task.Run(async () =>
+            {
+                await _link!.SendAsync(tenderMessage);
+                OnUiThread(() => IsBusy = false);
             });
             return;
         }
@@ -855,6 +905,7 @@ public partial class MainViewModel : ViewModelBase
 
         IsAwaitingTerminal = false;
         _terminalOrderId = null;
+        _awaitingMethod = null;
 
         switch (m.Status)
         {
@@ -912,6 +963,8 @@ public partial class MainViewModel : ViewModelBase
         ShowItems = false;
         IsAwaitingTerminal = false;
         _terminalOrderId = null;
+        _awaitingMethod = null;
+        IsBusy = false;
         ClearEntry();
         Status = "";
         Stage = RegisterStage.Loyalty;
@@ -941,6 +994,8 @@ public partial class MainViewModel : ViewModelBase
     };
 
     private string? _lastCartJson;
+    private bool _cartSyncInFlight;
+    private bool _cartSyncDirty;
 
     /// <summary>
     /// Debounced push of the basket to the customer terminal. Called from
@@ -955,21 +1010,42 @@ public partial class MainViewModel : ViewModelBase
         _cartSyncTimer.Start();
     }
 
+    /// <summary>
+    /// Single-flight: the REST render is several sequential calls (clear list,
+    /// insert rows, set totals), so two overlapping sends interleave and leave
+    /// a garbled basket on the terminal when the operator rings items quickly.
+    /// While one send is out, further changes just mark the cart dirty and the
+    /// latest state is sent when the in-flight one finishes.
+    /// </summary>
     private void FlushCartSync()
     {
         _cartSyncTimer.Stop();
         if (_link is null || !IsTerminalConnected || IsAwaitingTerminal) return;
 
+        if (_cartSyncInFlight)
+        {
+            _cartSyncDirty = true;
+            return;
+        }
+
         var message = BuildCartMessage();
         var json = PosJson.Serialize(message);
         if (json == _lastCartJson) return;
         _lastCartJson = json;
+        _cartSyncInFlight = true;
         _ = Task.Run(async () =>
         {
-            if (!await _link.SendAsync(message))
+            var ok = await _link.SendAsync(message);
+            OnUiThread(() =>
             {
-                OnUiThread(() => _lastCartJson = null); // retry on next change
-            }
+                _cartSyncInFlight = false;
+                if (!ok) _lastCartJson = null; // retry below / on next change
+                if (_cartSyncDirty || !ok)
+                {
+                    _cartSyncDirty = false;
+                    QueueCartSync();
+                }
+            });
         });
     }
 

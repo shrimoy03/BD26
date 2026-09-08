@@ -534,5 +534,18 @@
                 </StackPanel>
             </Grid>
         </Border>
+
+        <!-- ===== Busy overlay: blocks input while a terminal command is out ===== -->
+        <Border Grid.Row="0" Grid.RowSpan="4" IsVisible="{Binding IsBusy}"
+                Background="#3A000000">
+            <Border Background="#F2DCB4" BorderBrush="#8A8064" BorderThickness="1"
+                    Padding="46,20" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                    <ProgressBar IsIndeterminate="True" Width="130" Height="7"
+                                 Foreground="#8A1E27" Background="#E0D2B0" />
+                    <TextBlock Text="Please wait..." FontSize="17" FontWeight="Bold" />
+                </StackPanel>
+            </Border>
+        </Border>
     </Grid>
 </UserControl>

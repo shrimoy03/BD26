@@ -67,6 +67,11 @@ object PosLink {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var appContext: Context? = null
 
+    // Capture-launch dedupe (see TYPE_START_PAYMENT below).
+    private var lastLaunchOrderId: String? = null
+    private var lastLaunchAtMs: Long = 0
+    private const val LAUNCH_DEDUPE_MS = 15_000L
+
     fun init(context: Context) {
         appContext = context.applicationContext
         if (transport != null) return
@@ -149,14 +154,28 @@ object PosLink {
                 // FACE/PALM = the customer already picked a biometric tender
                 // on the PxRetailer form — bring this app to the foreground and
                 // go straight into WinkPay capture, even from the background.
+                //
+                // Idempotent: a spammed Face button (or the register double-
+                // sending) must not relaunch the capture activity — a second
+                // launch intent to the singleTask WelcomeActivity would clear
+                // the in-progress capture screen above it.
                 val biometric = message.method?.lowercase()
                 if (biometric == "face" || biometric == "palm") {
-                    appContext?.let { ctx -> launchCapture(ctx, biometric) }
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    if (orderId == lastLaunchOrderId && now - lastLaunchAtMs < LAUNCH_DEDUPE_MS) {
+                        Log.d(TAG, "duplicate START_PAYMENT for $orderId ignored " +
+                            "(${now - lastLaunchAtMs}ms since launch)")
+                    } else {
+                        lastLaunchOrderId = orderId
+                        lastLaunchAtMs = now
+                        appContext?.let { ctx -> launchCapture(ctx, biometric) }
+                    }
                 }
             }
             PosMessage.TYPE_CANCEL_PAYMENT -> {
                 if (message.orderId != null && message.orderId != RegisterSale.orderId) return
                 RegisterSale.clear()
+                lastLaunchOrderId = null // a cancelled order may legitimately retry
                 listeners.forEach { it.onCancelPayment(message.orderId) }
             }
         }
