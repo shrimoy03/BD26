@@ -10,6 +10,13 @@ WINK_MERCHANT_CLIENT_SECRET=
 WINK_ENV=stage
 
 # ---- Register link ----
+# "ws" (the demo bench mode) connects out to the merchant register's WebSocket
+# server and receives START_PAYMENT pushes from it. Point the URL at the
+# REGISTER machine's LAN IP — do NOT use 127.0.0.1 + adb reverse: the tunnel
+# dies whenever adb drops and the link silently stops receiving.
+#POS_LINK_MODE=ws
+#POS_LINK_WS_URL=ws://192.168.1.247:8181/pos
+
 # "pxrrs" makes this app the :WinkPay participant from PAX's sequence diagram:
 # it talks to the PxRetailer REST service on this same terminal and picks the
 # sale up out of a form variable. Without this the link is disabled and the app

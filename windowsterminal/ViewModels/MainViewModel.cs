@@ -731,16 +731,20 @@ public partial class MainViewModel : ViewModelBase
         {
             _terminalOrderId = $"{TxnId}-{Payments.Count + 1}";
             IsAwaitingTerminal = true;
+            // Snapshot on the UI thread — Balance sums the observable
+            // collections, which must not be read from the thread pool.
+            var message = new PosMessage
+            {
+                Type = PosMessageTypes.StartPayment,
+                OrderId = _terminalOrderId,
+                AmountCents = (long)Math.Round(Balance * 100),
+                Currency = "USD",
+                Method = method,
+            };
+            Console.WriteLine($"[Register] START_PAYMENT {method} {message.OrderId} amountCents={message.AmountCents}");
             _ = Task.Run(async () =>
             {
-                var sent = await _link.SendAsync(new PosMessage
-                {
-                    Type = PosMessageTypes.StartPayment,
-                    OrderId = _terminalOrderId,
-                    AmountCents = (long)Math.Round(Balance * 100),
-                    Currency = "USD",
-                    Method = method,
-                });
+                var sent = await _link.SendAsync(message);
                 if (!sent)
                 {
                     OnUiThread(() =>
@@ -807,6 +811,16 @@ public partial class MainViewModel : ViewModelBase
             if (Lines.Count == 0)
             {
                 Status = "Customer picked a tender but the basket is empty";
+                Console.WriteLine("[Register] tender ignored — basket is empty");
+                return;
+            }
+
+            // A completed sale still has its lines on screen for a few seconds
+            // but nothing due — a Face press then would send a $0.00 payment.
+            if (Balance <= 0)
+            {
+                Status = "Customer picked a tender but nothing is due";
+                Console.WriteLine("[Register] tender ignored — balance is zero (sale already settled?)");
                 return;
             }
 
@@ -823,11 +837,13 @@ public partial class MainViewModel : ViewModelBase
             Status = method == "CARD"
                 ? "Customer chose card — starting EMV"
                 : $"Customer chose {m.Method!.ToLowerInvariant()} — starting WinkPay";
+            var tenderCents = (long)Math.Round(Balance * 100);
+            Console.WriteLine($"[Register] START_PAYMENT {method} {_terminalOrderId} amountCents={tenderCents}");
             _ = _link!.SendAsync(new PosMessage
             {
                 Type = PosMessageTypes.StartPayment,
                 OrderId = _terminalOrderId,
-                AmountCents = (long)Math.Round(Balance * 100),
+                AmountCents = tenderCents,
                 Currency = "USD",
                 Method = method,
             });
