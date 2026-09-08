@@ -505,7 +505,32 @@ public sealed class JpxRestLink : ITerminalLink
         }
     }
 
+    /// <summary>
+    /// One command at a time: the cart render is several sequential REST calls
+    /// and a tender command racing into the middle of it makes the terminal
+    /// flash through stray screens. Serializing here keeps every screen
+    /// transition intentional.
+    /// </summary>
+    private readonly SemaphoreSlim _sendLock = new(1, 1);
+
+    /// <summary>What we believe PxRetailer currently shows / whether it owns the screen.</summary>
+    private string? _lastDisplayedForm;
+    private bool _foreground = true;
+
     public async Task<bool> SendAsync(PosMessage message)
+    {
+        await _sendLock.WaitAsync();
+        try
+        {
+            return await SendLockedAsync(message);
+        }
+        finally
+        {
+            _sendLock.Release();
+        }
+    }
+
+    private async Task<bool> SendLockedAsync(PosMessage message)
     {
         // START_PAYMENT and CANCEL_PAYMENT both travel in START_TRANS_REQ_DATA;
         // the terminal app reads the JSON "type" to tell them apart. Re-showing
@@ -518,9 +543,12 @@ public sealed class JpxRestLink : ITerminalLink
 
         if (message.Type == PosMessageTypes.ShowThanks)
         {
-            // Take the screen back from WinkPay before showing the receipt.
-            await SetForegroundAsync(true);
-            return await PostAsync("/displayForm?formName=ThankYouScreen", null);
+            // WinkPay is showing its own thank-you page — yanking the screen
+            // over to PxRetailer's receipt form here is exactly the flicker the
+            // demo doesn't want. PxRetailer is reclaimed by the next cart sync
+            // (the register's new sale), one clean transition later.
+            Console.WriteLine("[JpxRestLink] sale complete — leaving the screen to WinkPay until the next sale");
+            return true;
         }
 
         // Manual rescue: PxRetailer sometimes launches into the background;
@@ -550,7 +578,13 @@ public sealed class JpxRestLink : ITerminalLink
                 },
                 new { commandName = "DisplayForm", formName = PosSettings.StockStartForm },
             };
-            return await PostAsync("/sendBatchCmd", JsonSerializer.Serialize(biometricBatch));
+            var shown = await PostAsync("/sendBatchCmd", JsonSerializer.Serialize(biometricBatch));
+            if (shown)
+            {
+                _foreground = true;
+                _lastDisplayedForm = PosSettings.StockStartForm;
+            }
+            return shown;
         }
 
         // A biometric tender is captured by WinkPay, which is a separate Android
@@ -577,6 +611,7 @@ public sealed class JpxRestLink : ITerminalLink
                 };
                 if (await PostAsync("/sendBatchCmd", JsonSerializer.Serialize(batch)))
                 {
+                    _lastDisplayedForm = FormStart;
                     StartResultPolling(); // fallback if the =2 notify never lands
                     var handed = await SetForegroundAsync(false);
                     Console.WriteLine(
@@ -616,6 +651,7 @@ public sealed class JpxRestLink : ITerminalLink
                 return false;
             }
 
+            _foreground = false;
             StartResultPolling();
             Console.WriteLine(
                 $"[JpxRestLink] order published to {_requestVar}, {_stateVar}=1, PxRetailer backgrounded");
@@ -660,7 +696,9 @@ public sealed class JpxRestLink : ITerminalLink
         }
 
         commands.Add(new { commandName = "DisplayForm", formName = form });
-        return await PostAsync("/sendBatchCmd", JsonSerializer.Serialize(commands));
+        var displayed = await PostAsync("/sendBatchCmd", JsonSerializer.Serialize(commands));
+        if (displayed) _lastDisplayedForm = form;
+        return displayed;
     }
 
     /// <summary>
@@ -704,7 +742,20 @@ public sealed class JpxRestLink : ITerminalLink
                 new { name = "STR.AMOUNTOK", value = Money(message.AmountCents ?? 0) },
             },
         }));
-        ok &= await PostAsync("/displayForm?formName=BackgroundScreen", null);
+        // Reclaim the screen when WinkPay had it (the register starting a new
+        // sale is the moment PxRetailer comes back), and only re-display the
+        // idle form when the terminal is showing something else — re-displaying
+        // it on every ring makes the terminal blink.
+        if (!_foreground)
+        {
+            ok &= await SetForegroundAsync(true);
+        }
+        if (_lastDisplayedForm != "BackgroundScreen")
+        {
+            var displayed = await PostAsync("/displayForm?formName=BackgroundScreen", null);
+            if (displayed) _lastDisplayedForm = "BackgroundScreen";
+            ok &= displayed;
+        }
         return ok;
     }
 
@@ -715,9 +766,14 @@ public sealed class JpxRestLink : ITerminalLink
     /// Android apps on the device — this is how WinkPay gets the screen for
     /// biometric capture while PxRetailer keeps running underneath.
     /// </summary>
-    private Task<bool> SetForegroundAsync(bool foreground) => PostAsync(
-        "/setVariable",
-        $$"""{"variables":[{"name":"{{VarForeground}}","value":"{{(foreground ? "true" : "false")}}"}]}""");
+    private async Task<bool> SetForegroundAsync(bool foreground)
+    {
+        var ok = await PostAsync(
+            "/setVariable",
+            $$"""{"variables":[{"name":"{{VarForeground}}","value":"{{(foreground ? "true" : "false")}}"}]}""");
+        if (ok) _foreground = foreground;
+        return ok;
+    }
 
     private Task<bool> SetVariableAsync(string name, string value) => PostAsync(
         "/setVariable",

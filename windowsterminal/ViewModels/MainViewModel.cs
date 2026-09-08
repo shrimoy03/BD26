@@ -1005,7 +1005,14 @@ public partial class MainViewModel : ViewModelBase
     /// </summary>
     private void QueueCartSync()
     {
-        if (_link is null || !IsTerminalConnected || IsAwaitingTerminal) return;
+        // Complete stage: WinkPay is showing its thank-you page — repainting
+        // the PxRetailer cart now would flash it over the top. The new sale's
+        // sync (stage back to Loyalty) reclaims the screen in one transition.
+        if (_link is null || !IsTerminalConnected || IsAwaitingTerminal
+            || Stage == RegisterStage.Complete)
+        {
+            return;
+        }
         _cartSyncTimer.Stop();
         _cartSyncTimer.Start();
     }
@@ -1020,7 +1027,11 @@ public partial class MainViewModel : ViewModelBase
     private void FlushCartSync()
     {
         _cartSyncTimer.Stop();
-        if (_link is null || !IsTerminalConnected || IsAwaitingTerminal) return;
+        if (_link is null || !IsTerminalConnected || IsAwaitingTerminal
+            || Stage == RegisterStage.Complete)
+        {
+            return;
+        }
 
         if (_cartSyncInFlight)
         {

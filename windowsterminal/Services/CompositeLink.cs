@@ -65,11 +65,15 @@ public sealed class CompositeLink : ITerminalLink
             case PosMessageTypes.StartPayment
                 when message.Method is "FACE" or "PALM":
                 // WinkPay runs the capture, but PxRetailer owns the display, so
-                // both sides are involved: launch WinkPay first so it covers the
-                // form, then let the REST link drop PxRetailer's foreground.
-                // Backgrounding first would flash the Android home screen.
-                var winkPayOk = await _ws.SendAsync(message);
-                var yieldedOk = await _rest.SendAsync(message);
+                // both sides are involved — and both at once: WinkPay pops its
+                // capture while PxRetailer drops the foreground, and the shorter
+                // that gap, the less of PxRetailer's own form navigation the
+                // customer sees flicker by. The winkpos landing page always sits
+                // behind PxRetailer, so there is no home-screen flash.
+                var winkPayTask = _ws.SendAsync(message);
+                var yieldTask = _rest.SendAsync(message);
+                var winkPayOk = await winkPayTask;
+                var yieldedOk = await yieldTask;
                 Console.WriteLine(
                     $"[CompositeLink] {message.Method}: winkpos websocket={winkPayOk}, PXRRS handover={yieldedOk}");
                 return winkPayOk || yieldedOk;
