@@ -531,10 +531,22 @@ public sealed class JpxRestLink : ITerminalLink
         // IS_TRANS_STARTED tender FireEvent, which comes back through the
         // notify callback (or the trigger-variable poll) and starts the real
         // FACE/PALM flow below. PxRetailer keeps the screen until then.
+        //
+        // One sendBatchCmd (foreground + displayForm) rather than two POSTs:
+        // each round-trip to PXRRS can stall ~10s when a notify delivery times
+        // out, so halving them makes the button visibly snappier.
         if (message.Type == PosMessageTypes.StartPayment && message.Method == "BIOMETRIC")
         {
-            await SetForegroundAsync(true);
-            return await PostAsync($"/displayForm?formName={PosSettings.StockStartForm}", null);
+            var biometricBatch = new object[]
+            {
+                new
+                {
+                    commandName = "SetVariable",
+                    variables = new[] { new { name = VarForeground, value = "true" } },
+                },
+                new { commandName = "DisplayForm", formName = PosSettings.StockStartForm },
+            };
+            return await PostAsync("/sendBatchCmd", JsonSerializer.Serialize(biometricBatch));
         }
 
         // A biometric tender is captured by WinkPay, which is a separate Android
@@ -570,22 +582,40 @@ public sealed class JpxRestLink : ITerminalLink
                 Console.WriteLine("[JpxRestLink] Phase-2 batch failed — falling back to the mailbox handshake");
             }
 
-            // Stock package: mailboxes stand in for the notify — publish the
-            // order, then raise the handshake flag WinkPay is polling. Order
-            // matters; the flag must not go up before the details are readable.
-            var published = await SetVariableAsync(_requestVar, PosJson.Serialize(message));
-            var flagged = await SetVariableAsync(_stateVar, StateOrderReady);
-            if (!published || !flagged)
+            // Stock package: mailboxes stand in for the notify. Publish the
+            // order, raise the handshake flag WinkPay polls, and drop
+            // PxRetailer's foreground — all in one sendBatchCmd. A batch is
+            // applied in order, so the flag still lands after the order JSON is
+            // readable, and it collapses three PXRRS round-trips (each a chance
+            // at a ~10s notify-timeout stall) into one.
+            var handoff = new object[]
             {
-                Console.WriteLine($"[JpxRestLink] could not hand over: {_requestVar} set={published}, {_stateVar} set={flagged}");
+                new
+                {
+                    commandName = "SetVariable",
+                    variables = new[] { new { name = _requestVar, value = PosJson.Serialize(message) } },
+                },
+                new
+                {
+                    commandName = "SetVariable",
+                    variables = new[] { new { name = _stateVar, value = StateOrderReady } },
+                },
+                new
+                {
+                    commandName = "SetVariable",
+                    variables = new[] { new { name = VarForeground, value = "false" } },
+                },
+            };
+            if (!await PostAsync("/sendBatchCmd", JsonSerializer.Serialize(handoff)))
+            {
+                Console.WriteLine("[JpxRestLink] mailbox handoff batch failed");
                 return false;
             }
 
             StartResultPolling();
-            var yielded = await SetForegroundAsync(false);
             Console.WriteLine(
-                $"[JpxRestLink] order published to {_requestVar}, {_stateVar}=1, PxRetailer backgrounded={yielded}");
-            return yielded;
+                $"[JpxRestLink] order published to {_requestVar}, {_stateVar}=1, PxRetailer backgrounded");
+            return true;
         }
 
         if (message.Type is not (PosMessageTypes.StartPayment or PosMessageTypes.CancelPayment))

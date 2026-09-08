@@ -170,6 +170,10 @@ object PosLink {
      * appop happens to be granted, which is quicker when it works.
      */
     private fun launchCapture(ctx: Context, biometric: String) {
+        // Carry the order straight in the intent so the capture screen never
+        // has to depend on the RegisterSale singleton being intact by the time
+        // it reads it — a fresh cold-launch, a stale prior sale, or a race with
+        // clear() would otherwise leave the amount at 0 and show nothing.
         val intent = android.content.Intent(
             ctx,
             com.bloomingdales.winkpos.WelcomeActivity::class.java,
@@ -179,6 +183,8 @@ object PosLink {
                     android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP,
             )
             .putExtra(EXTRA_AUTO_BIOMETRIC, biometric)
+            .putExtra(EXTRA_ORDER_ID, RegisterSale.orderId)
+            .putExtra(EXTRA_AMOUNT_CENTS, RegisterSale.amountCents)
 
         try {
             ctx.startActivity(intent)
@@ -232,4 +238,8 @@ object PosLink {
 
     /** Intent extra: "face" | "palm" — launch straight into WinkPay capture. */
     const val EXTRA_AUTO_BIOMETRIC = "autoBiometric"
+
+    /** Intent extras carrying the sale so the amount survives any singleton race. */
+    const val EXTRA_ORDER_ID = "registerOrderId"
+    const val EXTRA_AMOUNT_CENTS = "registerAmountCents"
 }

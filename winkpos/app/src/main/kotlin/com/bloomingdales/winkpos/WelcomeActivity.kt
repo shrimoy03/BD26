@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.view.View
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -74,8 +75,11 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
         )
 
         // Both modalities use the SDK's full-screen native capture activity.
-        findViewById<View>(R.id.faceTile).setOnClickListener { startCheckin("face") }
-        findViewById<View>(R.id.palmTile).setOnClickListener { startCheckin("palm") }
+        // When the register has a sale waiting, a tap is a payment for that
+        // amount, not a check-in — otherwise the customer would land in the
+        // amount-less enrollment flow and see no total.
+        findViewById<View>(R.id.faceTile).setOnClickListener { onBiometricTile("face") }
+        findViewById<View>(R.id.palmTile).setOnClickListener { onBiometricTile("palm") }
         findViewById<View>(R.id.settingsButton).setOnClickListener {
             startActivity(SettingsActivity.intent(this))
         }
@@ -107,11 +111,27 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
     private fun handleAutoBiometric(intent: android.content.Intent?) {
         val biometric = intent?.getStringExtra(PosLink.EXTRA_AUTO_BIOMETRIC) ?: return
         intent.removeExtra(PosLink.EXTRA_AUTO_BIOMETRIC)
-        if (!PosLink.RegisterSale.isPending) return
-        startRegisterPayment(biometric)
+
+        // Prefer the amount the launch carried; fall back to the live sale.
+        val orderId = intent.getStringExtra(PosLink.EXTRA_ORDER_ID)
+            ?: PosLink.RegisterSale.orderId
+        val amount = intent.getLongExtra(PosLink.EXTRA_AMOUNT_CENTS, 0L)
+            .takeIf { it > 0 } ?: PosLink.RegisterSale.amountCents
+        intent.removeExtra(PosLink.EXTRA_ORDER_ID)
+        intent.removeExtra(PosLink.EXTRA_AMOUNT_CENTS)
+
+        if (orderId == null || amount <= 0) {
+            Log.w(TAG, "auto-biometric with no valid sale (orderId=$orderId, amount=$amount) — ignoring")
+            return
+        }
+        startRegisterPayment(biometric, orderId, amount)
     }
 
-    private fun startRegisterPayment(biometricType: String) {
+    private fun startRegisterPayment(
+        biometricType: String,
+        orderId: String = PosLink.RegisterSale.orderId ?: "",
+        amount: Long = PosLink.RegisterSale.amountCents,
+    ) {
         if (checkinInFlight) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
@@ -119,9 +139,10 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
             ensureCameraPermission()
             return
         }
-        val orderId = PosLink.RegisterSale.orderId ?: return
-        val amount = PosLink.RegisterSale.amountCents
-        if (amount <= 0) return
+        if (orderId.isBlank() || amount <= 0) {
+            Log.w(TAG, "register payment with no amount (orderId=$orderId, amount=$amount) — ignoring")
+            return
+        }
         checkinInFlight = true
         statusText.visibility = View.INVISIBLE
 
@@ -235,6 +256,15 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
         }
     }
 
+    /** A tile tap pays the pending register sale, or starts a check-in. */
+    private fun onBiometricTile(biometricType: String) {
+        if (PosLink.RegisterSale.isPending) {
+            startRegisterPayment(biometricType)
+        } else {
+            startCheckin(biometricType)
+        }
+    }
+
     private fun startCheckin(biometricType: String) {
         if (checkinInFlight) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
@@ -318,4 +348,8 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
     private fun deviceSerial(): String =
         Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
             ?: "winkpos-demo-device"
+
+    private companion object {
+        const val TAG = "WelcomeActivity"
+    }
 }
