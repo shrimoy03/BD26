@@ -138,7 +138,11 @@ object PosLink {
         when (message.type) {
             PosMessage.TYPE_START_PAYMENT -> {
                 val orderId = message.orderId ?: return
-                val amount = message.amountCents ?: return
+                val amount = message.amountCents ?: run {
+                    Log.w(TAG, "START_PAYMENT with no amountCents: ${message.toJson()}")
+                    return
+                }
+                Log.d(TAG, "START_PAYMENT order=$orderId amount=$amount method=${message.method}")
                 RegisterSale.set(orderId, amount)
                 listeners.forEach { it.onStartPayment(orderId, amount) }
 

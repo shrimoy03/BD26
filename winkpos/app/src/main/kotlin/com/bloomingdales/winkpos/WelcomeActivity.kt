@@ -143,6 +143,7 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
             Log.w(TAG, "register payment with no amount (orderId=$orderId, amount=$amount) — ignoring")
             return
         }
+        Log.d(TAG, "startRegisterPayment $biometricType order=$orderId amount=$amount")
         checkinInFlight = true
         statusText.visibility = View.INVISIBLE
 
