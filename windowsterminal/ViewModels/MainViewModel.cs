@@ -90,7 +90,9 @@ public partial class MainViewModel : ViewModelBase
             _link.MessageReceived += m => OnUiThread(() => HandleTerminalMessage(m));
         }
 
-        _cartSyncTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        // Short debounce: still coalesces a scan-gun burst, but a single ring
+        // hits the terminal fast. The sync itself is one batched call now.
+        _cartSyncTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
         _cartSyncTimer.Tick += (_, _) => FlushCartSync();
 
         _flowTimer = new DispatcherTimer();

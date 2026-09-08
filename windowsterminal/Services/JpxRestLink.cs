@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -701,11 +702,22 @@ public sealed class JpxRestLink : ITerminalLink
         return displayed;
     }
 
+    /// <summary>Rows as last rendered on the terminal, for the append fast path.</summary>
+    private readonly List<string> _renderedRows = new();
+
     /// <summary>
     /// Mirror the register basket onto PxRetailer's stock idle screen:
     /// LIST.ITEM holds the line items and STR.SUBTOTAL / STR.TAX /
     /// STR.AMOUNTOK the money row (names from the PxRetailer API doc, present
     /// in the stock PxRetail packages).
+    ///
+    /// Speed: ListBoxInsertItem and SetVariable batch (verified on the A3700;
+    /// ListBoxRemoveItem does not), so the common ring-another-item case is a
+    /// single sendBatchCmd appending just the new rows. Only a shrink/edit
+    /// falls back to clear-and-rebuild (one extra call). Every sync also
+    /// re-asserts FOREGROUND=true inside the same batch — free, and it
+    /// self-heals the tracked foreground state if PxRetailer slipped behind
+    /// another app without us knowing.
     /// </summary>
     private async Task<bool> SendCartAsync(PosMessage message)
     {
@@ -717,44 +729,66 @@ public sealed class JpxRestLink : ITerminalLink
             return name.PadRight(36) + Money(item.AmountCents).PadLeft(10);
         }
 
-        // Clear, then rebuild the list (empty basket -> empty list is valid).
-        var ok = await PostAsync("/listBoxRemoveItem", """{"listControlId":"LIST.ITEM"}""");
-
         var items = message.Items ?? Array.Empty<CartLine>();
-        if (items.Length > 0)
-        {
-            var listItems = new object[items.Length];
-            for (var i = 0; i < items.Length; i++)
-            {
-                listItems[i] = new { text = Line(items[i]), itemId = i + 1 };
-            }
+        var rows = items.Select(Line).ToList();
 
-            ok &= await PostAsync("/listBoxInsertItem", JsonSerializer.Serialize(
-                new { listControlId = "LIST.ITEM", listItems }));
+        // Append-only when the rendered rows are a strict prefix of the new
+        // ones; anything else (void, qty change, new sale) needs the rebuild.
+        var appendOnly = rows.Count >= _renderedRows.Count
+            && _renderedRows.SequenceEqual(rows.Take(_renderedRows.Count));
+
+        var ok = true;
+        if (!appendOnly)
+        {
+            ok = await PostAsync("/listBoxRemoveItem", """{"listControlId":"LIST.ITEM"}""");
+            _renderedRows.Clear();
         }
 
-        ok &= await PostAsync("/setVariable", JsonSerializer.Serialize(new
+        var commands = new List<object>
         {
-            variables = new[]
+            new
             {
-                new { name = "STR.SUBTOTAL", value = Money(message.SubtotalCents ?? 0) },
-                new { name = "STR.TAX", value = Money(message.TaxCents ?? 0) },
-                new { name = "STR.AMOUNTOK", value = Money(message.AmountCents ?? 0) },
+                commandName = "SetVariable",
+                variables = new[]
+                {
+                    new { name = VarForeground, value = "true" },
+                    new { name = "STR.SUBTOTAL", value = Money(message.SubtotalCents ?? 0) },
+                    new { name = "STR.TAX", value = Money(message.TaxCents ?? 0) },
+                    new { name = "STR.AMOUNTOK", value = Money(message.AmountCents ?? 0) },
+                },
             },
-        }));
-        // Reclaim the screen when WinkPay had it (the register starting a new
-        // sale is the moment PxRetailer comes back), and only re-display the
-        // idle form when the terminal is showing something else — re-displaying
-        // it on every ring makes the terminal blink.
-        if (!_foreground)
+        };
+
+        if (rows.Count > _renderedRows.Count)
         {
-            ok &= await SetForegroundAsync(true);
+            var listItems = new object[rows.Count - _renderedRows.Count];
+            for (var i = _renderedRows.Count; i < rows.Count; i++)
+            {
+                listItems[i - _renderedRows.Count] = new { text = rows[i], itemId = i + 1 };
+            }
+            commands.Add(new { commandName = "ListBoxInsertItem", listControlId = "LIST.ITEM", listItems });
         }
-        if (_lastDisplayedForm != "BackgroundScreen")
+
+        // Only re-display the idle form when the terminal is showing something
+        // else — re-displaying it on every ring makes the terminal blink.
+        var displayIdle = _lastDisplayedForm != "BackgroundScreen";
+        if (displayIdle)
         {
-            var displayed = await PostAsync("/displayForm?formName=BackgroundScreen", null);
-            if (displayed) _lastDisplayedForm = "BackgroundScreen";
-            ok &= displayed;
+            commands.Add(new { commandName = "DisplayForm", formName = "BackgroundScreen" });
+        }
+
+        var sent = await PostAsync("/sendBatchCmd", JsonSerializer.Serialize(commands));
+        ok &= sent;
+        if (sent)
+        {
+            _foreground = true;
+            if (displayIdle) _lastDisplayedForm = "BackgroundScreen";
+            _renderedRows.Clear();
+            _renderedRows.AddRange(rows);
+        }
+        else
+        {
+            _renderedRows.Clear(); // force a full rebuild on the next sync
         }
         return ok;
     }
