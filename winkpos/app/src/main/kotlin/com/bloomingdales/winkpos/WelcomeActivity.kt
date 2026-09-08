@@ -74,17 +74,16 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
             ),
         )
 
-        // Both modalities check the customer in and land on the rewards
-        // Dashboard, which handles a pending register sale (shows the amount,
-        // Pay charges it) or a standalone browse if none.
-        findViewById<View>(R.id.faceTile).setOnClickListener { startCheckin("face") }
-        findViewById<View>(R.id.palmTile).setOnClickListener { startCheckin("palm") }
+        // Idle landing page: the biometric tender is chosen on PxRetailer /
+        // the register, which foregrounds this app straight into capture, so
+        // there are no on-screen tender buttons. Settings stays reachable, and
+        // a long-press on the logo starts a face check-in for bench testing.
         findViewById<View>(R.id.settingsButton).setOnClickListener {
             startActivity(SettingsActivity.intent(this))
         }
-        findViewById<View>(R.id.signupTile).setOnClickListener {
-            statusText.text = getString(R.string.signup_hint)
-            statusText.visibility = View.VISIBLE
+        findViewById<View>(R.id.brandLogo).setOnLongClickListener {
+            startCheckin("face")
+            true
         }
 
         if (BuildConfig.WINK_CLIENT_ID.isBlank() || BuildConfig.WINK_MERCHANT_CLIENT_SECRET.isBlank()) {
