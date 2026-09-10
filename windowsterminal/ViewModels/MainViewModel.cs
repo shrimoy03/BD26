@@ -59,6 +59,7 @@ public partial class MainViewModel : ViewModelBase
     private int _txnBase = 40880;
     private string? _terminalOrderId;
     private string? _awaitingMethod;
+    private long _awaitingSinceMs;
     private Action? _flowTimerAction;
 
     public MainViewModel() : this(null) { }
@@ -778,6 +779,7 @@ public partial class MainViewModel : ViewModelBase
             _terminalOrderId = $"{TxnId}-{Payments.Count + 1}";
             _awaitingMethod = method;
             IsAwaitingTerminal = true;
+            _awaitingSinceMs = Environment.TickCount64;
             // Snapshot on the UI thread — Balance sums the observable
             // collections, which must not be read from the thread pool.
             var message = new PosMessage
@@ -863,11 +865,19 @@ public partial class MainViewModel : ViewModelBase
             // via both the notify callback and the trigger-variable poll) must
             // not relaunch WinkPay. BIOMETRIC is just the options page, so a
             // tender choice while it is pending is the expected next step.
+            // After 10s the in-flight launch evidently didn't land (e.g. the
+            // winkpos socket was down at that moment) — treat the new press as
+            // a retry of the same order instead of ignoring the customer.
             if (IsAwaitingTerminal && _awaitingMethod is "FACE" or "PALM" or "CARD")
             {
+                if (Environment.TickCount64 - _awaitingSinceMs < 10_000)
+                {
+                    Console.WriteLine(
+                        $"[Register] duplicate {method} tender ignored — {_awaitingMethod} already in flight");
+                    return;
+                }
                 Console.WriteLine(
-                    $"[Register] duplicate {method} tender ignored — {_awaitingMethod} already in flight");
-                return;
+                    $"[Register] {method} pressed again after {_awaitingMethod} stalled — retrying the launch");
             }
 
             if (Lines.Count == 0)
@@ -892,6 +902,7 @@ public partial class MainViewModel : ViewModelBase
             {
                 _terminalOrderId = $"{TxnId}-{Payments.Count + 1}";
                 IsAwaitingTerminal = true;
+                _awaitingSinceMs = Environment.TickCount64;
                 Stage = RegisterStage.CardTender;
                 Refresh();
             }
@@ -900,6 +911,7 @@ public partial class MainViewModel : ViewModelBase
                 ? "Customer chose card — starting EMV"
                 : $"Customer chose {m.Method!.ToLowerInvariant()} — starting WinkPay";
             _awaitingMethod = method;
+            _awaitingSinceMs = Environment.TickCount64;
             var tenderMessage = new PosMessage
             {
                 Type = PosMessageTypes.StartPayment,

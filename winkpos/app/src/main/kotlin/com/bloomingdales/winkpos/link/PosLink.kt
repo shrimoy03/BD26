@@ -70,7 +70,7 @@ object PosLink {
     // Capture-launch dedupe (see TYPE_START_PAYMENT below).
     private var lastLaunchOrderId: String? = null
     private var lastLaunchAtMs: Long = 0
-    private const val LAUNCH_DEDUPE_MS = 15_000L
+    private const val LAUNCH_DEDUPE_MS = 8_000L // below the register 10s retry window
 
     fun init(context: Context) {
         appContext = context.applicationContext

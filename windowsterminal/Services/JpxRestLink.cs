@@ -84,6 +84,7 @@ public sealed class JpxRestLink : ITerminalLink
     private string? _lastUptime;
     private int _cyclesSinceSubscribe;
     private CancellationTokenSource? _resultPoll;
+    private bool _phase2Unavailable;
 
     /// <summary>Poll cycles (5s each) between re-claiming the notify callback.</summary>
     private const int ResubscribeCycles = 12;
@@ -621,8 +622,10 @@ public sealed class JpxRestLink : ITerminalLink
             // Custom package installed: run the diagram's Phase 2 verbatim —
             // one batch publishes the order and shows StartTransaction, and the
             // package raises IS_TRANS_STARTED=1 itself (PXRRS notifies both
-            // parties). The register does not touch the state flag.
-            if (_startForm == FormStart)
+            // parties). The register does not touch the state flag. On a stock
+            // package this batch fails every time — learn that once instead of
+            // burning a round-trip (and a possible stall) on every sale.
+            if (_startForm == FormStart && !_phase2Unavailable)
             {
                 var batch = new object[]
                 {
@@ -642,7 +645,9 @@ public sealed class JpxRestLink : ITerminalLink
                         $"[JpxRestLink] Phase-2 batch sent ({VarRequest} + DisplayForm {FormStart}), PxRetailer backgrounded={handed}");
                     return handed;
                 }
-                Console.WriteLine("[JpxRestLink] Phase-2 batch failed — falling back to the mailbox handshake");
+                _phase2Unavailable = true;
+                Console.WriteLine(
+                    "[JpxRestLink] Phase-2 batch failed — using the mailbox handshake from now on (custom package not installed)");
             }
 
             // Stock package: mailboxes stand in for the notify. Publish the
@@ -956,19 +961,29 @@ public sealed class JpxRestLink : ITerminalLink
             return true;
         }
 
-        // Send the whole URL, scheme and path included. A bare "host:port" is
-        // still answered with resultCode 0, but PXRRS silently keeps whatever
-        // replyAddress it had — getSubscriptionData then shows the previous
-        // subscriber and every notification goes there instead of to us.
-        var path = $"/subscribe?replyURL={Uri.EscapeDataString(_notifyUrl)}";
+        // PARKED subscription. PXRRS serializes its request queue and blocks
+        // ~10s every time it fails to DELIVER a notify (measured; SLOW lines).
+        // Deliveries to this PC fail whenever the macOS/Windows firewall drops
+        // the inbound SYN — which silently recurs on every rebuild — and there
+        // is no unsubscribe API, so an unreachable replyURL poisons every
+        // register call with stalls. Nothing in the demo needs the notify path
+        // (the 400ms trigger poll + the WebSocket carry everything), so point
+        // the subscription at the terminal's own loopback: a delivery attempt
+        // gets an instant connection-refused instead of a 10s timeout, and
+        // re-claiming it here still keeps stray tools from becoming the
+        // subscriber. Set POS_NOTIFY_SUBSCRIBE_REAL=1 to subscribe with the
+        // real callback URL when debugging notify delivery.
+        var subscribeUrl = Environment.GetEnvironmentVariable("POS_NOTIFY_SUBSCRIBE_REAL") == "1"
+            ? _notifyUrl
+            : "http://127.0.0.1:9/notify";
+        var path = $"/subscribe?replyURL={Uri.EscapeDataString(subscribeUrl)}";
 
-        // Plain-http callback (the recipe PAX's own tool uses, and the only
-        // one FireEvents have ever been observed arriving on): subscribe bare,
-        // no certificate — attaching one makes PXRRS treat the callback as TLS.
-        if (!_notifyUrl.StartsWith("https", StringComparison.OrdinalIgnoreCase))
+        // Plain-http callback: subscribe bare, no certificate — attaching one
+        // makes PXRRS treat the callback as TLS.
+        if (!subscribeUrl.StartsWith("https", StringComparison.OrdinalIgnoreCase))
         {
             var plainOk = await PostAsync(path, null);
-            Console.WriteLine($"[JpxRestLink] subscribe (plain http callback) ok={plainOk}");
+            Console.WriteLine($"[JpxRestLink] subscribe ({(subscribeUrl == _notifyUrl ? "real callback" : "parked on terminal loopback")}) ok={plainOk}");
             return plainOk;
         }
 
