@@ -90,7 +90,12 @@ public sealed class PosSettings
     /// PAX's own RetailDemoApplication subscribes with an https replyURL, and
     /// PXRRS appears not to deliver to a plain-http one.
     /// </summary>
-    public bool NotifyUseTls { get; set; } = true;
+    // Plain HTTP by default: PAX's own ECR test tool receives FireEvent
+    // notifies over an http replyURL with no certificate, while an https+cert
+    // subscription has never received one here — and every failed delivery
+    // attempt stalls PXRRS's whole request queue ~10s, which read as the
+    // register randomly turning sluggish mid-demo.
+    public bool NotifyUseTls { get; set; }
 
     /// <summary>Blank = the bundled <c>certs/pxrrs-notify-server.p12</c>.</summary>
     public string NotifyCertPath { get; set; } = "";

@@ -274,7 +274,7 @@ public sealed class JpxRestLink : ITerminalLink
         {
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(1), ct);
+                await Task.Delay(TimeSpan.FromMilliseconds(400), ct);
             }
             catch (OperationCanceledException)
             {
@@ -962,6 +962,16 @@ public sealed class JpxRestLink : ITerminalLink
         // subscriber and every notification goes there instead of to us.
         var path = $"/subscribe?replyURL={Uri.EscapeDataString(_notifyUrl)}";
 
+        // Plain-http callback (the recipe PAX's own tool uses, and the only
+        // one FireEvents have ever been observed arriving on): subscribe bare,
+        // no certificate — attaching one makes PXRRS treat the callback as TLS.
+        if (!_notifyUrl.StartsWith("https", StringComparison.OrdinalIgnoreCase))
+        {
+            var plainOk = await PostAsync(path, null);
+            Console.WriteLine($"[JpxRestLink] subscribe (plain http callback) ok={plainOk}");
+            return plainOk;
+        }
+
         var certificate = LoadNotifyCertificate();
         if (certificate is null) return await PostAsync(path, null);
 
@@ -1085,6 +1095,7 @@ public sealed class JpxRestLink : ITerminalLink
 
     private async Task<bool> PostAsync(string path, string? jsonBody)
     {
+        var started = Environment.TickCount64;
         try
         {
             var content = jsonBody is null
@@ -1101,12 +1112,34 @@ public sealed class JpxRestLink : ITerminalLink
             Console.WriteLine($"[JpxRestLink] POST {path} failed: {e.Message}");
             return false;
         }
+        finally
+        {
+            LogIfSlow("POST " + path, started);
+        }
+    }
+
+    /// <summary>
+    /// A normal PXRRS call answers in ~100–300ms; ~10s means the terminal
+    /// stalled its request queue delivering a notify to an unreachable or
+    /// TLS-refusing callback. Surfacing it makes "the demo went sluggish"
+    /// diagnosable from the console instead of by feel.
+    /// </summary>
+    private static void LogIfSlow(string what, long startedTickMs)
+    {
+        var elapsed = Environment.TickCount64 - startedTickMs;
+        if (elapsed > 1500)
+        {
+            Console.WriteLine(
+                $"[JpxRestLink] SLOW: {what} took {elapsed / 1000.0:F1}s — PXRRS likely stalled on a notify delivery");
+        }
     }
 
     private async Task<string?> GetVariableAsync(string name)
     {
+        var started = Environment.TickCount64;
         var response = await _http.GetAsync(
             $"{_baseUrl}/getVariable?variableNames={Uri.EscapeDataString(name)}");
+        LogIfSlow($"GET {name}", started);
         var body = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(body);
         if (!doc.RootElement.TryGetProperty("resultItems", out var items)) return null;
