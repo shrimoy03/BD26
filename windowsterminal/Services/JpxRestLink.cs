@@ -107,6 +107,14 @@ public sealed class JpxRestLink : ITerminalLink
         // setVariable and the listBox calls, and a timed-out handover leaves the
         // sale half-published.
         _http = new HttpClient(BuildHandler(config)) { Timeout = TimeSpan.FromSeconds(30) };
+        // Fresh connection per request. PXRRS's embedded NanoHTTPD reaps idle
+        // keep-alive sockets on its own ~10s timer; reusing a pooled connection
+        // it is concurrently abandoning hangs the request for exactly that
+        // timeout (measured: sequential curl with fresh connections never
+        // stalls while the pooled client intermittently takes 10.1s). The
+        // extra mTLS handshake costs ~80ms on the LAN — invisible next to a
+        // guaranteed absence of 10s outliers.
+        _http.DefaultRequestHeaders.ConnectionClose = true;
     }
 
     /// <summary>Bundled fallback when no cert path is configured.</summary>
@@ -465,9 +473,11 @@ public sealed class JpxRestLink : ITerminalLink
             {
                 // PxRetailer is the default start config on the demo bench:
                 // bring it to the foreground on connect (it sometimes launches
-                // behind other apps). It only drops the foreground later,
-                // during a biometric handoff to WinkPay.
-                var foregroundOk = await SetForegroundAsync(true);
+                // behind other apps). NEVER while a tender is in flight though —
+                // a link blip mid-capture (PXRRS's periodic ~10s lockup can fail
+                // one liveness probe) used to re-run this init and yank
+                // PxRetailer in front of the WinkPay camera.
+                var foregroundOk = _resultPoll is not null || await SetForegroundAsync(true);
                 _subscribed = await SubscribeAsync();
                 // Subscribing is what actually matters; a package that does not
                 // define the foreground flag should not fail the whole link.
