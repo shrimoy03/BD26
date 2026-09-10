@@ -32,6 +32,7 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
     private lateinit var statusText: TextView
     private var checkinInFlight = false
     private var showingRegisterPrompt = false
+    private var lastBiometricType = "face"
 
     private val cameraPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -84,6 +85,16 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
         findViewById<View>(R.id.brandLogo).setOnLongClickListener {
             startCheckin("face")
             true
+        }
+
+        findViewById<View>(R.id.retryButton).setOnClickListener {
+            hideRetryPanel()
+            startCheckin(lastBiometricType)
+        }
+        findViewById<View>(R.id.retryCancelButton).setOnClickListener {
+            hideRetryPanel()
+            // Tells the register; it returns to checkout with the sale intact.
+            PosLink.sendResult(com.bloomingdales.winkpos.link.PosMessage.STATUS_CANCELLED)
         }
 
         if (BuildConfig.WINK_CLIENT_ID.isBlank() || BuildConfig.WINK_MERCHANT_CLIENT_SECRET.isBlank()) {
@@ -143,11 +154,29 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
 
     // ----- Register link (merchant POS via Wi-Fi or USB/JPxSerialServer) -----
 
-    override fun onStartPayment(orderId: String, amountCents: Long) = renderRegisterSale()
+    override fun onStartPayment(orderId: String, amountCents: Long) {
+        hideRetryPanel()
+        renderRegisterSale()
+    }
 
     override fun onCancelPayment(orderId: String?) {
         if (checkinInFlight) winkPay.cancelPayment()
+        hideRetryPanel()
         renderRegisterSale()
+    }
+
+    /**
+     * A register-driven scan that fails or is backed out of must offer the
+     * customer a way forward — without this the idle page just sits there
+     * while the register waits.
+     */
+    private fun showRetryPanel(message: String) {
+        findViewById<android.widget.TextView>(R.id.retryMessage).text = message
+        findViewById<View>(R.id.retryPanel).visibility = View.VISIBLE
+    }
+
+    private fun hideRetryPanel() {
+        findViewById<View>(R.id.retryPanel).visibility = View.GONE
     }
 
     /** The idle screen doubles as the "pay $X" prompt for register-driven sales. */
@@ -176,6 +205,8 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
 
     private fun startCheckin(biometricType: String) {
         if (checkinInFlight) return
+        lastBiometricType = biometricType
+        hideRetryPanel()
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -228,15 +259,25 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
 
             override fun onCancelled(requestId: String) {
                 checkinInFlight = false
+                if (PosLink.RegisterSale.isPending) {
+                    showRetryPanel(getString(R.string.scan_cancelled_message))
+                }
             }
 
             override fun onFailure(error: EmbeddedPaymentError) {
                 checkinInFlight = false
-                statusText.text = getString(
+                val message = getString(
                     R.string.checkin_failed,
                     error.errorMessage.ifBlank { error.errorCode },
                 )
-                statusText.visibility = View.VISIBLE
+                if (PosLink.RegisterSale.isPending) {
+                    // Register sale in flight: give the customer a way forward
+                    // instead of stranding them on the idle page.
+                    showRetryPanel(message)
+                } else {
+                    statusText.text = message
+                    statusText.visibility = View.VISIBLE
+                }
             }
         })
 

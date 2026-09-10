@@ -86,6 +86,10 @@
     <string name="go_back">‹  Go Back</string>
     <string name="scan_success">Success!</string>
     <string name="try_again">TRY AGAIN</string>
+    <string name="scan_retry_title">We couldn\'t verify you</string>
+    <string name="try_again_button">Try Again</string>
+    <string name="cancel_sale">Cancel</string>
+    <string name="scan_cancelled_message">The scan was cancelled.</string>
     <string name="scan_bad_response">Unexpected server response — please try again.</string>
 
     <!-- Thank you -->
