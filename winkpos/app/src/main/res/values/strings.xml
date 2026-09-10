@@ -5,6 +5,7 @@
 
     <!-- Welcome -->
     <string name="welcome">Welcome</string>
+    <string name="welcome_to">Welcome to</string>
     <string name="bconnected_b">b</string>
     <string name="bconnected_rest">connected</string>
     <string name="bconnected_caption">Just scan your face or palm to pay or scan the QR code to login to your <b>b Connected Bloomingdales</b> Account</string>
