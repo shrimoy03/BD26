@@ -135,57 +135,13 @@
             <Border Grid.Column="0" Background="#FCFBF2" BorderBrush="#55534A" BorderThickness="1">
                 <Panel>
 
-                    <!-- Loyalty stage: the two Loyallist card faces -->
-                    <StackPanel IsVisible="{Binding IsLoyaltyStage}" Spacing="52"
+                    <!-- Loyalty stage: the Top of the List card faces -->
+                    <StackPanel IsVisible="{Binding IsLoyaltyStage}" Spacing="44"
                                 HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <!-- Bloomingdale's Loyallist credit card -->
-                        <Border Width="268" Height="164" CornerRadius="10"
-                                BorderBrush="#2E2850" BorderThickness="1">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
-                                    <GradientStop Color="#6A5EBE" Offset="0" />
-                                    <GradientStop Color="#4A3F98" Offset="1" />
-                                </LinearGradientBrush>
-                            </Border.Background>
-                            <Grid Margin="16,12">
-                                <TextBlock Text="bloomingdale's loyallist" FontSize="11"
-                                           Foreground="#EDEAFF" HorizontalAlignment="Right" />
-                                <TextBlock Text="bloom" FontSize="52" FontWeight="Bold" FontStyle="Italic"
-                                           Foreground="#C9C2F2" VerticalAlignment="Center" Margin="0,4,0,0" />
-                                <StackPanel VerticalAlignment="Bottom" Spacing="4">
-                                    <TextBlock Text="00 000 000 000    0" FontSize="14"
-                                               FontFamily="Courier New" Foreground="#F2F0FF" />
-                                    <DockPanel>
-                                        <TextBlock Text="B. BEST CUSTOMER" FontSize="9" Foreground="#D9D4F5" />
-                                        <TextBlock Text="CARDHOLDER SINCE 2026" FontSize="7.5"
-                                                   Foreground="#B9B2E5" HorizontalAlignment="Right" />
-                                    </DockPanel>
-                                </StackPanel>
-                            </Grid>
-                        </Border>
-
-                        <!-- Loyallist key-tag card -->
-                        <Border Width="268" Height="164" CornerRadius="10"
-                                BorderBrush="#39325E" BorderThickness="1">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
-                                    <GradientStop Color="#8478CE" Offset="0" />
-                                    <GradientStop Color="#5C50AC" Offset="1" />
-                                </LinearGradientBrush>
-                            </Border.Background>
-                            <Grid Margin="16,12">
-                                <TextBlock Text="POINTS ARE A SHOPPER'S BEST FRIEND" FontSize="8.5"
-                                           Foreground="#EDEAFF" />
-                                <TextBlock Text="bloom" FontSize="52" FontWeight="Bold" FontStyle="Italic"
-                                           Foreground="#A79DE2" VerticalAlignment="Center" Margin="0,6,0,0" />
-                                <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Right" Spacing="0">
-                                    <TextBlock Text="Tell." FontSize="12" FontStyle="Italic" Foreground="#F2F0FF"
-                                               HorizontalAlignment="Right" />
-                                    <TextBlock Text="loyallist" FontSize="13" FontWeight="Bold"
-                                               Foreground="#F2F0FF" HorizontalAlignment="Right" />
-                                </StackPanel>
-                            </Grid>
-                        </Border>
+                        <Image Source="avares://MerchantTerminal/Assets/totl_card_credit.png"
+                               Width="300" Stretch="Uniform" />
+                        <Image Source="avares://MerchantTerminal/Assets/totl_card_member.png"
+                               Width="300" Stretch="Uniform" />
                     </StackPanel>
 
                     <!-- Every later stage: the basket -->
@@ -196,19 +152,10 @@
                               ColumnDefinitions="*,Auto,*" Height="58">
                             <TextBlock Grid.Column="0" Text="{Binding CustomerName}" FontSize="17"
                                        FontWeight="Bold" VerticalAlignment="Top" />
-                            <!-- tiny overlapping card art -->
-                            <Panel Grid.Column="1" Width="86" Height="46" VerticalAlignment="Top">
-                                <Border Width="62" Height="38" CornerRadius="4" Background="#5C50AC"
-                                        BorderBrush="#39325E" BorderThickness="1" Margin="24,8,0,0"
-                                        HorizontalAlignment="Left" VerticalAlignment="Top" />
-                                <Border Width="62" Height="38" CornerRadius="4" Background="#6A5EBE"
-                                        BorderBrush="#39325E" BorderThickness="1"
-                                        HorizontalAlignment="Left" VerticalAlignment="Top">
-                                    <TextBlock Text="bloom" FontSize="13" FontStyle="Italic" FontWeight="Bold"
-                                               Foreground="#C9C2F2" HorizontalAlignment="Center"
-                                               VerticalAlignment="Center" />
-                                </Border>
-                            </Panel>
+                            <!-- tiny card art -->
+                            <Image Grid.Column="1" Height="46" VerticalAlignment="Top"
+                                   Source="avares://MerchantTerminal/Assets/totl_card_credit.png"
+                                   Stretch="Uniform" />
                             <TextBlock Grid.Column="2" Text="{Binding LoyaltyNumberDisplay}" FontSize="17"
                                        FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Top" />
                         </Grid>

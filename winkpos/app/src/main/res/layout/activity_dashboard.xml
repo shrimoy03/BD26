@@ -442,6 +442,7 @@
                 android:orientation="vertical" />
 
             <LinearLayout
+                android:id="@+id/subtotalRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
@@ -488,6 +489,7 @@
             </LinearLayout>
 
             <LinearLayout
+                android:id="@+id/taxesRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="3dp"
@@ -533,6 +535,53 @@
                     android:textStyle="bold" />
             </LinearLayout>
 
+            <!-- Register mode: the payment is confirmed on one big card — the
+                 item detail lives on the register, so only amount + card + Pay
+                 show here. The alias overlay sits over the art's baked-in
+                 CUSTOMER NAME line. -->
+            <FrameLayout
+                android:id="@+id/bigCardBlock"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:visibility="gone">
+
+                <ImageView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:adjustViewBounds="true"
+                    android:contentDescription="@string/card_brand_line"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/totl_card_credit" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom|start"
+                    android:layout_marginStart="30dp"
+                    android:layout_marginBottom="16dp"
+                    android:background="#000000"
+                    android:orientation="vertical"
+                    android:paddingEnd="40dp">
+
+                    <TextView
+                        android:id="@+id/bigCardAlias"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:letterSpacing="0.12"
+                        android:textColor="#FFFFFF"
+                        android:textSize="18sp" />
+
+                    <TextView
+                        android:id="@+id/bigCardNumber"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:letterSpacing="0.1"
+                        android:textColor="#BBBBBB"
+                        android:textSize="12sp" />
+                </LinearLayout>
+            </FrameLayout>
+
             <!-- Flexible gap: absorbs leftover height so payment + Pay pin
                  to the bottom without any scrolling. -->
             <View
@@ -541,6 +590,7 @@
                 android:layout_weight="1" />
 
             <LinearLayout
+                android:id="@+id/preferredRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
@@ -566,6 +616,7 @@
             </LinearLayout>
 
             <LinearLayout
+                android:id="@+id/smallCardRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
@@ -577,7 +628,7 @@
                     android:layout_height="48dp"
                     android:contentDescription="@string/card_brand_line"
                     android:scaleType="fitCenter"
-                    android:src="@drawable/loyallist_card" />
+                    android:src="@drawable/totl_card_credit" />
 
                 <TextView
                     android:id="@+id/cardLast4"

@@ -244,18 +244,28 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         itemsContainer.removeAllViews()
         val inflater = LayoutInflater.from(this)
         if (registerMode) {
-            val row = inflater.inflate(R.layout.row_order_item, itemsContainer, false)
-            row.findViewById<TextView>(R.id.itemName).text =
-                getString(R.string.register_sale_item)
-            row.findViewById<TextView>(R.id.itemDetail).text =
-                getString(R.string.register_sale_order, PosLink.RegisterSale.orderId ?: "")
-            row.findViewById<TextView>(R.id.itemPrice).text = money(totalCents)
-            itemsContainer.addView(row)
+            // Payment confirmation: the itemized sale lives on the register, so
+            // this side is just the amount, the card (large, with the
+            // customer's name on it), and Pay.
             emptyCartHint.visibility = View.GONE
             orderTitle.text = getString(R.string.order_summary)
             cartBadge.visibility = View.GONE
+            findViewById<View>(R.id.subtotalRow).visibility = View.GONE
+            findViewById<View>(R.id.taxesRow).visibility = View.GONE
+            findViewById<View>(R.id.preferredRow).visibility = View.GONE
+            findViewById<View>(R.id.smallCardRow).visibility = View.GONE
+            findViewById<View>(R.id.bigCardBlock).visibility = View.VISIBLE
+            findViewById<TextView>(R.id.bigCardAlias).text =
+                CheckinSession.firstName.uppercase().ifEmpty { "LOYALLIST MEMBER" }
+            findViewById<TextView>(R.id.bigCardNumber).text =
+                CheckinSession.preferredCard?.let { "•••• ${it.last4}" } ?: ""
             return
         }
+        findViewById<View>(R.id.subtotalRow).visibility = View.VISIBLE
+        findViewById<View>(R.id.taxesRow).visibility = View.VISIBLE
+        findViewById<View>(R.id.preferredRow).visibility = View.VISIBLE
+        findViewById<View>(R.id.smallCardRow).visibility = View.VISIBLE
+        findViewById<View>(R.id.bigCardBlock).visibility = View.GONE
         for (item in cart) {
             val row = inflater.inflate(R.layout.row_order_item, itemsContainer, false)
             row.findViewById<TextView>(R.id.itemName).text = item.name
