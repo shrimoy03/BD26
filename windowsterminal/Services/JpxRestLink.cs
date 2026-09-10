@@ -283,6 +283,11 @@ public sealed class JpxRestLink : ITerminalLink
 
             if (!_connected) continue;
 
+            // While a tender is in flight the result poll owns the mailbox —
+            // pausing the trigger poll halves the request pressure on PXRRS
+            // (which serializes) and avoids double-reading the shared variable.
+            if (_resultPoll is not null) continue;
+
             // Preferred route: the button carries a PxDesigner SetVariable
             // action writing "face"/"palm" here. Unlike FireEvent this needs no
             // notification from PXRRS, so it works on this terminal today.
@@ -539,15 +544,24 @@ public sealed class JpxRestLink : ITerminalLink
         // re-reads the variable.
         if (message.Type == PosMessageTypes.DisplayCart)
         {
+            // A cart render means no tender is in flight (syncs are held while
+            // one is), so any result poll still running is an orphan — the
+            // outcome arrived over the WebSocket instead of the mailbox. Left
+            // alone it hits PXRRS every second forever, and the terminal
+            // serializes requests, so everything after the first sale turns
+            // sluggish.
+            StopResultPolling();
             return await SendCartAsync(message);
         }
 
         if (message.Type == PosMessageTypes.ShowThanks)
         {
-            // WinkPay is showing its own thank-you page — yanking the screen
-            // over to PxRetailer's receipt form here is exactly the flicker the
-            // demo doesn't want. PxRetailer is reclaimed by the next cart sync
-            // (the register's new sale), one clean transition later.
+            // Sale resolved — end the mailbox result poll (the result came in
+            // over the WebSocket). WinkPay is showing its own thank-you page,
+            // so no screen change here either: PxRetailer is reclaimed by the
+            // next cart sync (the register's new sale), one clean transition
+            // later.
+            StopResultPolling();
             Console.WriteLine("[JpxRestLink] sale complete — leaving the screen to WinkPay until the next sale");
             return true;
         }
@@ -827,7 +841,7 @@ public sealed class JpxRestLink : ITerminalLink
         StopResultPolling();
         var cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
         _resultPoll = cts;
-        _ = Task.Run(() => PollForResultAsync(cts.Token));
+        _ = Task.Run(() => PollForResultAsync(cts));
     }
 
     private void StopResultPolling()
@@ -845,7 +859,25 @@ public sealed class JpxRestLink : ITerminalLink
     /// sits on "awaiting" forever — so read the mailbox directly while a
     /// biometric tender is in flight.
     /// </summary>
-    private async Task PollForResultAsync(CancellationToken ct)
+    private async Task PollForResultAsync(CancellationTokenSource cts)
+    {
+        try
+        {
+            await PollForResultCoreAsync(cts.Token);
+        }
+        finally
+        {
+            // Release the handle when the loop exits on its own (mailbox
+            // delivery) so the trigger poll resumes; StopResultPolling may
+            // have already swapped it out, in which case this is a no-op.
+            if (Interlocked.CompareExchange(ref _resultPoll, null, cts) == cts)
+            {
+                cts.Dispose();
+            }
+        }
+    }
+
+    private async Task PollForResultCoreAsync(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {

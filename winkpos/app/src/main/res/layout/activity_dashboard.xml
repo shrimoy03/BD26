@@ -565,15 +565,16 @@
                     android:paddingEnd="40dp">
 
                     <TextView
-                        android:id="@+id/bigCardAlias"
+                        android:id="@+id/bigCardNumber"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:letterSpacing="0.12"
+                        android:letterSpacing="0.14"
                         android:textColor="#FFFFFF"
-                        android:textSize="18sp" />
+                        android:textSize="20sp"
+                        android:textStyle="bold" />
 
                     <TextView
-                        android:id="@+id/bigCardNumber"
+                        android:id="@+id/bigCardAlias"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:letterSpacing="0.1"
