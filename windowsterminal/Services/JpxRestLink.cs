@@ -10,6 +10,7 @@ using MerchantTerminal.Models;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Logging;
 
 namespace MerchantTerminal.Services;
@@ -366,6 +367,14 @@ public sealed class JpxRestLink : ITerminalLink
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
 
+        // Kestrel drops a connection whose TLS handshake fails without a word,
+        // so a terminal that cannot negotiate with us looks exactly like one
+        // that never called. Surface its connection diagnostics — this is the
+        // only place the difference is visible.
+        builder.Logging.AddSimpleConsole(o => o.SingleLine = true);
+        builder.Logging.SetMinimumLevel(LogLevel.Warning);
+        builder.Logging.AddFilter("Microsoft.AspNetCore.Server.Kestrel", LogLevel.Debug);
+
         // PXRRS will not post results to a plain-http replyURL — PAX's own
         // RetailDemoApplication subscribes with an https one. Serve TLS with
         // the PAX server identity when the advertised URL says https.
@@ -374,6 +383,11 @@ public sealed class JpxRestLink : ITerminalLink
         {
             options.ListenAnyIP(uri.Port, listen =>
             {
+                // HTTP/1.1 only. Under TLS, Kestrel otherwise advertises h2 over
+                // ALPN; a Java client that selects it and then fails the
+                // exchange is indistinguishable from nothing arriving.
+                listen.Protocols = HttpProtocols.Http1;
+
                 if (!useTls) return;
                 var cert = LoadNotifyCertificate();
                 if (cert is null)
@@ -1034,12 +1048,14 @@ public sealed class JpxRestLink : ITerminalLink
     /// which looks exactly like the terminal never firing an event.
     ///
     /// Shaped after PAX's working curl recipe:
-    ///   curl 'https://&lt;terminal&gt;:9090/subscribe?replyURL=&lt;ip&gt;%3A8080' \
+    ///   curl 'https://&lt;terminal&gt;:9090/subscribe?replyURL=&lt;url&gt;' \
     ///        --form 'fileName=@server_pci7.cert'
-    /// — the replyURL is bare host:port (no scheme, no path) and the multipart
-    /// field is named "fileName". The certificate sent is exported from the
-    /// very keystore the notify listener presents, so the two can never drift
-    /// apart.
+    /// — multipart, part named "fileName". Delivery with this exact request is
+    /// not yet confirmed (see the note in the body); the replyURL is the full
+    /// https URL the RetailDemoApplication registers, which does deliver here.
+    /// The certificate sent is exported from
+    /// the very keystore the notify listener presents, so the two can never
+    /// drift apart.
     /// </summary>
     private async Task<bool> SubscribeAsync()
     {
@@ -1099,12 +1115,19 @@ public sealed class JpxRestLink : ITerminalLink
                 : System.Security.Cryptography.PemEncoding.WriteString(
                     "CERTIFICATE", certificate.RawData);
 
+            // Multipart, part named "fileName", per PAX's curl recipe
+            // (--form 'fileName=@server_pci7.cert'). A bare non-multipart body
+            // is rejected outright ("Failed to upload attached file"). NOTE:
+            // delivery with THIS request is still unconfirmed on an A3700 —
+            // PXRRS answers Success and getSubscriptionData echoes the URL, yet
+            // no https callback is dialled, while the RetailDemoApplication's
+            // record for the very same URL does deliver to this listener. The
+            // remaining difference is therefore inside this request body.
             using var form = new System.Net.Http.MultipartFormDataContent();
-            var part = new StringContent(pem, Encoding.ASCII);
+            var part = new ByteArrayContent(Encoding.ASCII.GetBytes(pem));
             part.Headers.ContentType =
                 new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
-            // The API doc names this part "filename" (all lower case).
-            form.Add(part, "filename", "server_pci7.cert");
+            form.Add(part, "fileName", "server_pci7.cert");
 
             var response = await _http.PostAsync($"{_baseUrl}{path}", form);
             var body = await response.Content.ReadAsStringAsync();
