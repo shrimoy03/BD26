@@ -26,10 +26,10 @@ namespace MerchantTerminal.Services;
 ///   result   <- notify IS_TRANS_STARTED=2 -> GET /getVariable TRANS_RESULT
 ///
 /// The REST endpoint is JPxSerialServer on this PC (USB link to the terminal)
-/// or PXRRS on the terminal itself over Ethernet/Wi-Fi — same sequence, per
+/// or PXRRS on the terminal itself over Ethernet/Wi-Fi â€” same sequence, per
 /// PAX's "Assumptions &amp; Clarifications".
 ///
-/// Configured from <see cref="LinkConfig"/> — the setup screen (F9) writes the
+/// Configured from <see cref="LinkConfig"/> â€” the setup screen (F9) writes the
 /// terminal IP to %APPDATA%\MerchantTerminal\settings.json, and the documented
 /// POS_* environment variables still override it. See <see cref="PosSettings"/>.
 /// </summary>
@@ -37,7 +37,7 @@ public sealed class JpxRestLink : ITerminalLink
 {
     // Names from PAX's sequence diagram. PxDesigner variables are type-prefixed
     // (BOOL./STR./INT./LIST.), so the diagram's bare "FOREGROUND" is really
-    // BOOL.FOREGROUND — verified against a live A3700 (PxRetailer 2.01.16):
+    // BOOL.FOREGROUND â€” verified against a live A3700 (PxRetailer 2.01.16):
     // getVariable BOOL.FOREGROUND returns "true" and setVariable succeeds,
     // while the unprefixed name is rejected as unknown.
     //
@@ -47,7 +47,7 @@ public sealed class JpxRestLink : ITerminalLink
     private const string VarRequest = "START_TRANS_REQ_DATA";
     private const string VarResult = "TRANS_RESULT";
 
-    // Handshake states carried in the state mailbox — the pollable equivalent
+    // Handshake states carried in the state mailbox â€” the pollable equivalent
     // of the diagram's IS_TRANS_STARTED notify. PXRRS rejects setVariable with
     // an empty value, so idle is "0" rather than blank.
     private const string StateIdle = "0";
@@ -88,7 +88,7 @@ public sealed class JpxRestLink : ITerminalLink
     private bool _phase2Unavailable;
 
     /// <summary>
-    /// True once an inbound notify has proven terminal→register delivery works.
+    /// True once an inbound notify has proven terminalâ†’register delivery works.
     /// Until then (and again after a re-park or terminal restart) the trigger
     /// poll runs at the fast cadence, so notify never has to be trusted before
     /// it has delivered something.
@@ -138,7 +138,7 @@ public sealed class JpxRestLink : ITerminalLink
         // it is concurrently abandoning hangs the request for exactly that
         // timeout (measured: sequential curl with fresh connections never
         // stalls while the pooled client intermittently takes 10.1s). The
-        // extra mTLS handshake costs ~80ms on the LAN — invisible next to a
+        // extra mTLS handshake costs ~80ms on the LAN â€” invisible next to a
         // guaranteed absence of 10s outliers.
         _http.DefaultRequestHeaders.ConnectionClose = true;
     }
@@ -177,7 +177,7 @@ public sealed class JpxRestLink : ITerminalLink
 
     /// <summary>
     /// PXRRS on the terminal serves HTTPS with the PAX self-signed chain and
-    /// REQUIRES a client certificate (mutual TLS) — plain requests are dropped
+    /// REQUIRES a client certificate (mutual TLS) â€” plain requests are dropped
     /// mid-handshake. JPxSerialServer on localhost stays plain HTTP.
     /// </summary>
     private static HttpMessageHandler BuildHandler(LinkConfig config)
@@ -185,7 +185,7 @@ public sealed class JpxRestLink : ITerminalLink
         var handler = new HttpClientHandler();
         if (!config.BaseUrl.StartsWith("https", StringComparison.OrdinalIgnoreCase)) return handler;
 
-        // PAX chain is rooted at pxrrs-ca.pax.us (self-signed) — trust it for
+        // PAX chain is rooted at pxrrs-ca.pax.us (self-signed) â€” trust it for
         // the demo instead of installing the root into the OS store.
         handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
 
@@ -205,7 +205,7 @@ public sealed class JpxRestLink : ITerminalLink
         }
         else
         {
-            Console.WriteLine($"[JpxRestLink] WARNING: client cert not found at {p12} — PXRRS will reject us");
+            Console.WriteLine($"[JpxRestLink] WARNING: client cert not found at {p12} â€” PXRRS will reject us");
         }
 
         return handler;
@@ -225,7 +225,7 @@ public sealed class JpxRestLink : ITerminalLink
         var certPath = ResolveCertPath(config);
         if (https && !System.IO.File.Exists(certPath))
         {
-            return (false, $"No client certificate at {certPath} — PXRRS requires mutual TLS. See certs/README.md.");
+            return (false, $"No client certificate at {certPath} â€” PXRRS requires mutual TLS. See certs/README.md.");
         }
 
         using var http = new HttpClient(BuildHandler(config)) { Timeout = TimeSpan.FromSeconds(6) };
@@ -238,7 +238,7 @@ public sealed class JpxRestLink : ITerminalLink
                 return (false, $"Terminal answered {(int)response.StatusCode} {response.ReasonPhrase}.");
             }
 
-            return (true, "Connected — terminal answered getPackageList.");
+            return (true, "Connected â€” terminal answered getPackageList.");
         }
         catch (TaskCanceledException)
         {
@@ -253,7 +253,7 @@ public sealed class JpxRestLink : ITerminalLink
             var inner = e.InnerException;
             if (inner is System.Security.Authentication.AuthenticationException)
             {
-                return (false, $"TLS handshake failed — PXRRS rejected our client certificate ({certPath}).");
+                return (false, $"TLS handshake failed â€” PXRRS rejected our client certificate ({certPath}).");
             }
 
             if (inner is System.Net.Sockets.SocketException socket)
@@ -261,15 +261,15 @@ public sealed class JpxRestLink : ITerminalLink
                 return socket.SocketErrorCode switch
                 {
                     System.Net.Sockets.SocketError.ConnectionRefused =>
-                        (false, "Connection refused — nothing is listening on that port. Is PXRRS running on the terminal?"),
+                        (false, "Connection refused â€” nothing is listening on that port. Is PXRRS running on the terminal?"),
                     System.Net.Sockets.SocketError.HostUnreachable or
                     System.Net.Sockets.SocketError.NetworkUnreachable =>
-                        (false, "Host unreachable — the terminal is not on this subnet."),
+                        (false, "Host unreachable â€” the terminal is not on this subnet."),
                     _ => (false, socket.Message),
                 };
             }
 
-            return (false, inner is null ? e.Message : $"{e.Message} — {inner.Message}");
+            return (false, inner is null ? e.Message : $"{e.Message} â€” {inner.Message}");
         }
     }
 
@@ -300,7 +300,7 @@ public sealed class JpxRestLink : ITerminalLink
     /// Fallback for the notify path: poll the trigger variable (and optionally
     /// the displayed form) that the tender buttons write. Notify delivery DOES
     /// work (the earlier "never dispatches" verdict was subscription contention
-    /// — PXRRS holds one subscriber slot, last one wins), but it has real
+    /// â€” PXRRS holds one subscriber slot, last one wins), but it has real
     /// failure modes: a stolen slot, a firewalled callback, a terminal restart.
     /// So the poll runs fast (400ms) until an inbound notify proves delivery,
     /// then relaxes to a 2s safety net; <see cref="RaiseTender"/> dedupes the
@@ -322,7 +322,7 @@ public sealed class JpxRestLink : ITerminalLink
 
             if (!_connected) continue;
 
-            // While a tender is in flight the result poll owns the mailbox —
+            // While a tender is in flight the result poll owns the mailbox â€”
             // pausing the trigger poll halves the request pressure on PXRRS
             // (which serializes) and avoids double-reading the shared variable.
             if (_resultPoll is not null) continue;
@@ -356,7 +356,7 @@ public sealed class JpxRestLink : ITerminalLink
 
             if (!screen.Equals(_triggerForm, StringComparison.OrdinalIgnoreCase)) continue;
 
-            Console.WriteLine($"[JpxRestLink] '{screen}' displayed — treating as {_triggerMethod} tender");
+            Console.WriteLine($"[JpxRestLink] '{screen}' displayed â€” treating as {_triggerMethod} tender");
             RaiseTender(_triggerMethod, "form watch");
         }
     }
@@ -369,13 +369,13 @@ public sealed class JpxRestLink : ITerminalLink
 
         // Kestrel drops a connection whose TLS handshake fails without a word,
         // so a terminal that cannot negotiate with us looks exactly like one
-        // that never called. Surface its connection diagnostics — this is the
+        // that never called. Surface its connection diagnostics â€” this is the
         // only place the difference is visible.
         builder.Logging.AddSimpleConsole(o => o.SingleLine = true);
         builder.Logging.SetMinimumLevel(LogLevel.Warning);
         builder.Logging.AddFilter("Microsoft.AspNetCore.Server.Kestrel", LogLevel.Debug);
 
-        // PXRRS will not post results to a plain-http replyURL — PAX's own
+        // PXRRS will not post results to a plain-http replyURL â€” PAX's own
         // RetailDemoApplication subscribes with an https one. Serve TLS with
         // the PAX server identity when the advertised URL says https.
         var useTls = uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
@@ -392,7 +392,7 @@ public sealed class JpxRestLink : ITerminalLink
                 var cert = LoadNotifyCertificate();
                 if (cert is null)
                 {
-                    Console.WriteLine("[JpxRestLink] WARNING: https notify requested but no server certificate — falling back to http");
+                    Console.WriteLine("[JpxRestLink] WARNING: https notify requested but no server certificate â€” falling back to http");
                     return;
                 }
 
@@ -401,7 +401,7 @@ public sealed class JpxRestLink : ITerminalLink
                     https.ServerCertificate = cert;
 
                     // Pin TLS 1.2. Kestrel otherwise prefers 1.3, and the
-                    // terminal's Java client fails that handshake — PAX's own
+                    // terminal's Java client fails that handshake â€” PAX's own
                     // Node sample negotiates 1.2 and does receive callbacks
                     // with this exact certificate.
                     https.SslProtocols = System.Security.Authentication.SslProtocols.Tls12;
@@ -414,7 +414,7 @@ public sealed class JpxRestLink : ITerminalLink
         // Terminal middleware rather than MapPost(path): accept any method and
         // any path. PXRRS's exact callback shape is not documented, and a
         // mismatch on the verb or path would otherwise be rejected with no
-        // trace at all — which is indistinguishable from nothing arriving.
+        // trace at all â€” which is indistinguishable from nothing arriving.
         // Everything inbound is logged so the real shape is visible.
         _notifyServer.Run(async context =>
         {
@@ -425,7 +425,7 @@ public sealed class JpxRestLink : ITerminalLink
             // Answer before processing anything. PXRRS delivers notifies
             // synchronously from the same queue that serves our REST calls, so
             // every millisecond spent inside this handler stalls the terminal
-            // for everyone — a slow subscriber is indistinguishable from an
+            // for everyone â€” a slow subscriber is indistinguishable from an
             // unreachable one. PAX's node-ECR sample answers a bare 200 "ok"
             // and that is the shape the terminal is tested against.
             context.Response.StatusCode = StatusCodes.Status200OK;
@@ -463,7 +463,7 @@ public sealed class JpxRestLink : ITerminalLink
             var value = doc.RootElement.TryGetProperty("value", out var v) ? v.ToString() : null;
 
             // Relax the fast trigger poll only once a form EVENT arrives this
-            // way — that is the traffic the poll substitutes for. Anything else
+            // way â€” that is the traffic the poll substitutes for. Anything else
             // inbound (async EMV command responses, putFile results, test
             // curls) proves transport but NOT that the tender buttons carry
             // FireEvent actions; on a package where they only write the
@@ -474,7 +474,7 @@ public sealed class JpxRestLink : ITerminalLink
             {
                 _notifyHealthy = true;
                 Console.WriteLine(
-                    "[JpxRestLink] form events arriving via notify — trigger poll relaxed to fallback cadence");
+                    "[JpxRestLink] form events arriving via notify â€” trigger poll relaxed to fallback cadence");
             }
 
             // IS_TRANS_STARTED=2 -> the terminal published TRANS_RESULT.
@@ -516,9 +516,24 @@ public sealed class JpxRestLink : ITerminalLink
     /// The notify callback and the fallback trigger poll can both see the same
     /// button press (FireEvent and the SetVariable trigger ride on one button);
     /// whichever route arrives first wins and the echo inside the window is
-    /// dropped. A genuine repeat press lands outside it — while a tender is in
+    /// dropped. A genuine repeat press lands outside it â€” while a tender is in
     /// flight the trigger poll is paused anyway.
     /// </summary>
+    /// <summary>
+    /// True when <paramref name="method"/> was raised within the dedupe window
+    /// or a handoff's result poll is running — i.e. some other source (notify,
+    /// an earlier poll) already owns this tender.
+    /// </summary>
+    private bool TenderInFlight(string method)
+    {
+        if (_resultPoll is not null) return true;
+        lock (_tenderLock)
+        {
+            return _lastTenderMethod == method
+                && Environment.TickCount64 - _lastTenderAtTick < 5000;
+        }
+    }
+
     private void RaiseTender(string method, string source)
     {
         var now = Environment.TickCount64;
@@ -568,7 +583,7 @@ public sealed class JpxRestLink : ITerminalLink
             {
                 // PxRetailer is the default start config on the demo bench:
                 // bring it to the foreground on connect (it sometimes launches
-                // behind other apps). NEVER while a tender is in flight though —
+                // behind other apps). NEVER while a tender is in flight though â€”
                 // a link blip mid-capture (PXRRS's periodic ~10s lockup can fail
                 // one liveness probe) used to re-run this init and yank
                 // PxRetailer in front of the WinkPay camera.
@@ -583,7 +598,7 @@ public sealed class JpxRestLink : ITerminalLink
             }
             else if (alive && ++_cyclesSinceSubscribe >= ResubscribeCycles)
             {
-                // Nothing reports that our callback was taken over — another
+                // Nothing reports that our callback was taken over â€” another
                 // client on this machine subscribing with the same identity
                 // simply replaces it, and we would keep reporting connected
                 // while receiving nothing. Re-claiming it is cheap and
@@ -651,7 +666,7 @@ public sealed class JpxRestLink : ITerminalLink
         if (message.Type == PosMessageTypes.DisplayCart)
         {
             // A cart render means no tender is in flight (syncs are held while
-            // one is), so any result poll still running is an orphan — the
+            // one is), so any result poll still running is an orphan â€” the
             // outcome arrived over the WebSocket instead of the mailbox. Left
             // alone it hits PXRRS every second forever, and the terminal
             // serializes requests, so everything after the first sale turns
@@ -662,13 +677,13 @@ public sealed class JpxRestLink : ITerminalLink
 
         if (message.Type == PosMessageTypes.ShowThanks)
         {
-            // Sale resolved — end the mailbox result poll (the result came in
+            // Sale resolved â€” end the mailbox result poll (the result came in
             // over the WebSocket). WinkPay is showing its own thank-you page,
             // so no screen change here either: PxRetailer is reclaimed by the
             // next cart sync (the register's new sale), one clean transition
             // later.
             StopResultPolling();
-            Console.WriteLine("[JpxRestLink] sale complete — leaving the screen to WinkPay until the next sale");
+            Console.WriteLine("[JpxRestLink] sale complete â€” leaving the screen to WinkPay until the next sale");
             return true;
         }
 
@@ -701,11 +716,11 @@ public sealed class JpxRestLink : ITerminalLink
             });
             // PxRetailer transiently refuses SetVariable/DisplayForm right
             // after being backgrounded (observed while WinkPay still owned the
-            // screen) — one short retry rides out that window.
+            // screen) â€” one short retry rides out that window.
             var shown = await PostAsync("/sendBatchCmd", biometricBatch);
             if (!shown)
             {
-                Console.WriteLine("[JpxRestLink] payment-options batch refused — retrying once");
+                Console.WriteLine("[JpxRestLink] payment-options batch refused â€” retrying once");
                 await Task.Delay(500);
                 shown = await PostAsync("/sendBatchCmd", biometricBatch);
             }
@@ -722,13 +737,13 @@ public sealed class JpxRestLink : ITerminalLink
         // the customer never sees WinkPay come up.
         if (message.Type == PosMessageTypes.StartPayment && message.Method is "FACE" or "PALM")
         {
-            Console.WriteLine($"[JpxRestLink] {message.Method} tender — handing the sale to WinkPay");
+            Console.WriteLine($"[JpxRestLink] {message.Method} tender â€” handing the sale to WinkPay");
 
-            // Custom package installed: run the diagram's Phase 2 verbatim —
+            // Custom package installed: run the diagram's Phase 2 verbatim â€”
             // one batch publishes the order and shows StartTransaction, and the
             // package raises IS_TRANS_STARTED=1 itself (PXRRS notifies both
             // parties). The register does not touch the state flag. On a stock
-            // package this batch fails every time — learn that once instead of
+            // package this batch fails every time â€” learn that once instead of
             // burning a round-trip (and a possible stall) on every sale.
             if (_startForm == FormStart && !_phase2Unavailable)
             {
@@ -752,12 +767,12 @@ public sealed class JpxRestLink : ITerminalLink
                 }
                 _phase2Unavailable = true;
                 Console.WriteLine(
-                    "[JpxRestLink] Phase-2 batch failed — using the mailbox handshake from now on (custom package not installed)");
+                    "[JpxRestLink] Phase-2 batch failed â€” using the mailbox handshake from now on (custom package not installed)");
             }
 
             // Stock package: mailboxes stand in for the notify. Publish the
             // order, raise the handshake flag WinkPay polls, and drop
-            // PxRetailer's foreground — all in one sendBatchCmd. A batch is
+            // PxRetailer's foreground â€” all in one sendBatchCmd. A batch is
             // applied in order, so the flag still lands after the order JSON is
             // readable, and it collapses three PXRRS round-trips (each a chance
             // at a ~10s notify-timeout stall) into one.
@@ -817,7 +832,7 @@ public sealed class JpxRestLink : ITerminalLink
 
         // The request mailbox only exists in PAX's custom package. Writing it in
         // stock mode fails every send with "one or more variables could not be
-        // set" — and since a batch is only OK when every command is, that made
+        // set" â€” and since a batch is only OK when every command is, that made
         // an otherwise successful DisplayForm look like a failure.
         var commands = new List<object>();
         if (!stockMode)
@@ -848,7 +863,7 @@ public sealed class JpxRestLink : ITerminalLink
     /// ListBoxRemoveItem does not), so the common ring-another-item case is a
     /// single sendBatchCmd appending just the new rows. Only a shrink/edit
     /// falls back to clear-and-rebuild (one extra call). Every sync also
-    /// re-asserts FOREGROUND=true inside the same batch — free, and it
+    /// re-asserts FOREGROUND=true inside the same batch â€” free, and it
     /// self-heals the tracked foreground state if PxRetailer slipped behind
     /// another app without us knowing.
     /// </summary>
@@ -903,7 +918,7 @@ public sealed class JpxRestLink : ITerminalLink
         }
 
         // Only re-display the idle form when the terminal is showing something
-        // else — re-displaying it on every ring makes the terminal blink.
+        // else â€” re-displaying it on every ring makes the terminal blink.
         var displayIdle = _lastDisplayedForm != "BackgroundScreen";
         if (displayIdle)
         {
@@ -930,7 +945,7 @@ public sealed class JpxRestLink : ITerminalLink
 
     /// <summary>
     /// Hand the terminal display to (false) or take it back from (true) other
-    /// Android apps on the device — this is how WinkPay gets the screen for
+    /// Android apps on the device â€” this is how WinkPay gets the screen for
     /// biometric capture while PxRetailer keeps running underneath.
     /// </summary>
     private async Task<bool> SetForegroundAsync(bool foreground)
@@ -967,7 +982,7 @@ public sealed class JpxRestLink : ITerminalLink
     /// sequence diagram has PXRRS notify us (IS_TRANS_STARTED=2) and that path
     /// is live again, but a plain setVariable from winkpos raises no event on a
     /// stock package and delivery can silently die (stolen subscriber slot,
-    /// firewall) — without a result the sale sits on "awaiting" forever. So the
+    /// firewall) â€” without a result the sale sits on "awaiting" forever. So the
     /// mailbox is also read directly while a biometric tender is in flight;
     /// whichever route lands first stops the other.
     /// </summary>
@@ -1043,16 +1058,16 @@ public sealed class JpxRestLink : ITerminalLink
     /// /subscribe takes the callback server's X509 certificate as a file
     /// attachment, and per the API docs PXRRS needs it to authenticate an
     /// HTTPS replyURL before it will post anything there. Without it the
-    /// subscription still registers — getSubscriptionData happily reports the
-    /// replyAddress — but every notification is dropped at the TLS handshake,
+    /// subscription still registers â€” getSubscriptionData happily reports the
+    /// replyAddress â€” but every notification is dropped at the TLS handshake,
     /// which looks exactly like the terminal never firing an event.
     ///
     /// Shaped after PAX's working curl recipe:
     ///   curl 'https://&lt;terminal&gt;:9090/subscribe?replyURL=&lt;url&gt;' \
     ///        --form 'fileName=@server_pci7.cert'
-    /// — multipart, part named "fileName". Delivery with this exact request is
-    /// not yet confirmed (see the note in the body); the replyURL is the full
-    /// https URL the RetailDemoApplication registers, which does deliver here.
+    /// — multipart, part named "fileName", hand-rolled (see below) and carrying
+    /// the LF-terminated certificate. Verified delivering on an A3700; the
+    /// replyURL is the full https URL the RetailDemoApplication registers.
     /// The certificate sent is exported from
     /// the very keystore the notify listener presents, so the two can never
     /// drift apart.
@@ -1062,25 +1077,25 @@ public sealed class JpxRestLink : ITerminalLink
         _cyclesSinceSubscribe = 0;
 
         // Leave an externally-owned subscription alone. Ours is accepted but
-        // never delivers, whereas the RetailDemoApplication's does — and since
+        // never delivers, whereas the RetailDemoApplication's does â€” and since
         // both point at this same callback, the events still arrive here.
         if (!_manageSubscription)
         {
-            Console.WriteLine("[JpxRestLink] not managing the subscription — listening only");
+            Console.WriteLine("[JpxRestLink] not managing the subscription â€” listening only");
             return true;
         }
 
         // Notify-first: subscribe the real callback so tender FireEvents and
         // IS_TRANS_STARTED arrive as pushes instead of waiting on the trigger
-        // poll (which PXRRS's periodic lockups starve). The old failure mode —
+        // poll (which PXRRS's periodic lockups starve). The old failure mode â€”
         // PXRRS serializes its request queue and blocks ~10s every time it
         // fails to DELIVER a notify (firewalled callback, and no unsubscribe
-        // API exists) — is handled by the watchdog in NoteLatency: repeated
+        // API exists) â€” is handled by the watchdog in NoteLatency: repeated
         // ~10s stalls re-park the subscription on the terminal's own loopback
         // (instant connection-refused, no stalls) for the rest of the session,
         // and the fast polls carry the demo exactly as before. Re-claiming the
         // slot periodically also keeps stray tools (PAX test tool, node
-        // listeners) from stealing it — last subscriber wins.
+        // listeners) from stealing it â€” last subscriber wins.
         //   POS_NOTIFY_PARK=1            start parked (the old always-poll mode)
         //   POS_NOTIFY_SUBSCRIBE_REAL=1  never park, even if the watchdog trips
         var parked = ForceRealSubscription
@@ -1090,7 +1105,7 @@ public sealed class JpxRestLink : ITerminalLink
         _subscribedReal = !parked;
         var path = $"/subscribe?replyURL={Uri.EscapeDataString(subscribeUrl)}";
 
-        // Plain-http callback: subscribe bare, no certificate — attaching one
+        // Plain-http callback: subscribe bare, no certificate â€” attaching one
         // makes PXRRS treat the callback as TLS.
         if (!subscribeUrl.StartsWith("https", StringComparison.OrdinalIgnoreCase))
         {
@@ -1104,32 +1119,46 @@ public sealed class JpxRestLink : ITerminalLink
 
         try
         {
-            // Prefer the PEM file verbatim over re-encoding the certificate.
-            // PemEncoding.WriteString emits LF and no trailing newline; the
-            // subscription only takes effect when the file's own bytes (CRLF,
-            // trailing newline) are sent, so PXRRS's parser is evidently picky.
+            // Prefer the PEM file over re-encoding the certificate, and send it
+            // LF-terminated: the RetailDemoApplication uploads its own
+            // server_pci7.cert byte for byte — same certificate, LF line
+            // endings, 1525 bytes — and that upload delivers. Our copy differed
+            // only by CRLF, and PXRRS's PEM parser is evidently strict about
+            // it: Success is still returned but no certificate is kept.
             var pemFile = System.IO.Path.Combine(
                 AppContext.BaseDirectory, "certs", "server_pci7.cert");
             var pem = System.IO.File.Exists(pemFile)
                 ? await System.IO.File.ReadAllTextAsync(pemFile)
                 : System.Security.Cryptography.PemEncoding.WriteString(
                     "CERTIFICATE", certificate.RawData);
+            pem = pem.Replace("\r\n", "\n");
 
             // Multipart, part named "fileName", per PAX's curl recipe
-            // (--form 'fileName=@server_pci7.cert'). A bare non-multipart body
-            // is rejected outright ("Failed to upload attached file"). NOTE:
-            // delivery with THIS request is still unconfirmed on an A3700 —
-            // PXRRS answers Success and getSubscriptionData echoes the URL, yet
-            // no https callback is dialled, while the RetailDemoApplication's
-            // record for the very same URL does deliver to this listener. The
-            // remaining difference is therefore inside this request body.
-            using var form = new System.Net.Http.MultipartFormDataContent();
-            var part = new ByteArrayContent(Encoding.ASCII.GetBytes(pem));
-            part.Headers.ContentType =
-                new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
-            form.Add(part, "fileName", "server_pci7.cert");
+            // (--form 'fileName=@server_pci7.cert'); a bare non-multipart body
+            // is rejected outright ("Failed to upload attached file"). With the
+            // hand-rolled body below and the LF certificate, PXRRS answers
+            // "Success, certificate applied successfully" and dials the https
+            // callback — verified on an A3700 (two Face presses, both received).
+            // Hand-rolled multipart mirroring the RetailDemoApplication's
+            // Communication class byte for byte: UNQUOTED boundary in the
+            // Content-Type header, QUOTED name/filename in the part's
+            // Content-Disposition, application/octet-stream, CRLF throughout.
+            // MultipartFormDataContent quotes the boundary, leaves name= and
+            // filename= bare and appends filename*=utf-8''â€¦ â€” PXRRS's parser
+            // then finds no part, keeps the address without a certificate and
+            // still answers Success, so the https callback is never dialled.
+            var boundary = "----PxrrsSubscribe" + Guid.NewGuid().ToString("N");
+            var sb = new StringBuilder();
+            sb.Append("--").Append(boundary).Append("\r\n");
+            sb.Append("Content-Disposition: form-data; name=\"fileName\"; filename=\"server_pci7.cert\"\r\n");
+            sb.Append("Content-Type: application/octet-stream\r\n\r\n");
+            sb.Append(pem);
+            sb.Append("\r\n"); // framing CRLF belongs to the boundary, not the content
+            sb.Append("--").Append(boundary).Append("--\r\n");
+            var requestBody = new ByteArrayContent(Encoding.ASCII.GetBytes(sb.ToString()));
+            requestBody.Headers.TryAddWithoutValidation("Content-Type", "multipart/form-data; boundary=" + boundary);
 
-            var response = await _http.PostAsync($"{_baseUrl}{path}", form);
+            var response = await _http.PostAsync($"{_baseUrl}{path}", requestBody);
             var body = await response.Content.ReadAsStringAsync();
             var ok = response.IsSuccessStatusCode && IsResultOk(body);
             Console.WriteLine($"[JpxRestLink] subscribe (with callback cert) -> {body}");
@@ -1145,7 +1174,7 @@ public sealed class JpxRestLink : ITerminalLink
     /// <summary>
     /// Read the trigger variable and, if it names a biometric tender, raise it
     /// once. The value is stamped back to a neutral marker so holding on the
-    /// screen does not re-fire it — PXRRS rejects an empty value, hence "none"
+    /// screen does not re-fire it â€” PXRRS rejects an empty value, hence "none"
     /// rather than blank. Returns true when a tender was raised.
     /// </summary>
     private async Task<bool> ReadBiometricTriggerAsync()
@@ -1168,8 +1197,19 @@ public sealed class JpxRestLink : ITerminalLink
         };
         if (method is null) return false;
 
+        // The read above takes seconds on this terminal. If notify (or an
+        // earlier poll) raised this same tender meanwhile, its handoff has
+        // already written "1" here for WinkPay to claim — stamping "none" now
+        // would land on top of that flag and WinkPay would never start. Let
+        // the in-flight tender own the variable.
+        if (TenderInFlight(method))
+        {
+            Console.WriteLine($"[JpxRestLink] {_triggerVar}={value} seen, but a {method} tender is already in flight — leaving the flag alone");
+            return true;
+        }
+
         await SetVariableAsync(_triggerVar, "none");
-        Console.WriteLine($"[JpxRestLink] {_triggerVar}={value} — starting {method} tender");
+        Console.WriteLine($"[JpxRestLink] {_triggerVar}={value} â€” starting {method} tender");
         RaiseTender(method, "trigger poll");
         return true;
     }
@@ -1192,8 +1232,8 @@ public sealed class JpxRestLink : ITerminalLink
 
     /// <summary>
     /// Every PXRRS reply carries the terminal's boot timestamp. A change means
-    /// it restarted and dropped our subscription — which the 5s liveness poll
-    /// can easily miss entirely — so force a fresh subscribe instead of sitting
+    /// it restarted and dropped our subscription â€” which the 5s liveness poll
+    /// can easily miss entirely â€” so force a fresh subscribe instead of sitting
     /// there "connected" with a dead callback.
     /// </summary>
     private void NoteTerminalUptime(string body)
@@ -1211,7 +1251,7 @@ public sealed class JpxRestLink : ITerminalLink
             if (_lastUptime is not null && _lastUptime != uptime)
             {
                 Console.WriteLine(
-                    $"[JpxRestLink] terminal restarted ({_lastUptime} -> {uptime}) — re-subscribing");
+                    $"[JpxRestLink] terminal restarted ({_lastUptime} -> {uptime}) â€” re-subscribing");
                 _subscribed = false;
                 // Delivery must re-prove itself against the fresh PXRRS before
                 // the trigger poll relaxes again.
@@ -1252,7 +1292,7 @@ public sealed class JpxRestLink : ITerminalLink
     }
 
     /// <summary>
-    /// A normal PXRRS call answers in ~100–300ms; ~10s means the terminal
+    /// A normal PXRRS call answers in ~100â€“300ms; ~10s means the terminal
     /// stalled its request queue delivering a notify to an unreachable or
     /// TLS-refusing callback. Surfacing it makes "the demo went sluggish"
     /// diagnosable from the console instead of by feel.
@@ -1260,7 +1300,7 @@ public sealed class JpxRestLink : ITerminalLink
     /// Doubles as the notify watchdog: two ~10s stalls inside 90s while we are
     /// subscribed with the real callback means our replyURL is poisoning PXRRS
     /// (firewall dropping the inbound SYN is the classic cause, and it silently
-    /// recurs on every rebuild) — re-park the subscription on the terminal's
+    /// recurs on every rebuild) â€” re-park the subscription on the terminal's
     /// loopback and let the fast polls carry the session. PXRRS also stalls
     /// ~10s on its own once a minute or so, hence two-within-a-window rather
     /// than a hair trigger on the first.
@@ -1271,7 +1311,7 @@ public sealed class JpxRestLink : ITerminalLink
         if (elapsed <= 1500) return;
 
         Console.WriteLine(
-            $"[JpxRestLink] SLOW: {what} took {elapsed / 1000.0:F1}s — PXRRS likely stalled on a notify delivery");
+            $"[JpxRestLink] SLOW: {what} took {elapsed / 1000.0:F1}s â€” PXRRS likely stalled on a notify delivery");
 
         if (elapsed < 5000) return;                      // ordinary slowness, not the delivery timeout
         if (!_subscribedReal || _parkedByWatchdog) return; // already parked; stall is PXRRS-internal
@@ -1291,7 +1331,7 @@ public sealed class JpxRestLink : ITerminalLink
             if (ForceRealSubscription)
             {
                 Console.WriteLine(
-                    "[JpxRestLink] repeated ~10s stalls but POS_NOTIFY_SUBSCRIBE_REAL=1 — keeping the real callback; check the firewall on this PC");
+                    "[JpxRestLink] repeated ~10s stalls but POS_NOTIFY_SUBSCRIBE_REAL=1 â€” keeping the real callback; check the firewall on this PC");
                 return;
             }
 
@@ -1301,7 +1341,7 @@ public sealed class JpxRestLink : ITerminalLink
         _notifyHealthy = false;
         _subscribed = false; // MaintainLinkAsync re-subscribes (parked) within 5s
         Console.WriteLine(
-            "[JpxRestLink] repeated ~10s stalls — our callback is poisoning PXRRS (firewall?); parking the subscription and falling back to polling for this session");
+            "[JpxRestLink] repeated ~10s stalls â€” our callback is poisoning PXRRS (firewall?); parking the subscription and falling back to polling for this session");
     }
 
     private async Task<string?> GetVariableAsync(string name)
@@ -1329,7 +1369,7 @@ public sealed class JpxRestLink : ITerminalLink
     /// Most endpoints answer with a single result object, but /sendBatchCmd
     /// answers with one per command in the batch. TryGetProperty throws rather
     /// than returning false on a non-object root, so the array case has to be
-    /// handled explicitly — otherwise every batch send looks like a transport
+    /// handled explicitly â€” otherwise every batch send looks like a transport
     /// failure and the caller retries forever.
     /// </summary>
     private static bool IsResultOk(string body)
