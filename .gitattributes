@@ -1,0 +1,3 @@
+# PXRRS is strict about the callback certificate's line endings (LF); keep
+# every file in certs/ byte-exact regardless of core.autocrlf.
+windowsterminal/certs/* -text
