@@ -139,7 +139,22 @@ POS_TERMINAL_LINK=jpxss dotnet run
 #                 host/port/TLS fields, else http://127.0.0.1:9090)
 # POS_NOTIFY_URL  our notify callback  (default: auto-detected LAN IP on the
 #                 configured notify port, e.g. http://192.168.1.149:8282/notify)
+# POS_NOTIFY_PARK=1            never subscribe the real callback; run on the
+#                              polling fallbacks only (the old default)
+# POS_NOTIFY_SUBSCRIBE_REAL=1  keep the real callback even if the stall
+#                              watchdog would park it (notify debugging)
 ```
+
+The register subscribes its real callback by default and PXRRS pushes tender
+FireEvents / `IS_TRANS_STARTED` to it; the 400ms trigger poll keeps running
+until the first inbound notify proves delivery, then relaxes to a 2s safety
+net. If the callback ever poisons PXRRS (each failed delivery stalls its whole
+request queue ~10s — classically the PC firewall silently dropping inbound
+after a rebuild), a watchdog spots two ~10s stalls inside 90s, re-parks the
+subscription on the terminal's loopback and drops back to fast polling for the
+rest of the session — worst case is exactly the old behavior. Watch for
+`[JpxRestLink] notify delivery verified` / `parking the subscription` in the
+console.
 
 Terminal-side counterpart: `../winkpos` `link/PxrrsTransport.kt`
 (`POS_LINK_MODE=pxrrs` in local.properties). Simulate the whole flow without

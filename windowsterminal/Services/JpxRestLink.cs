@@ -86,6 +86,31 @@ public sealed class JpxRestLink : ITerminalLink
     private CancellationTokenSource? _resultPoll;
     private bool _phase2Unavailable;
 
+    /// <summary>
+    /// True once an inbound notify has proven terminal→register delivery works.
+    /// Until then (and again after a re-park or terminal restart) the trigger
+    /// poll runs at the fast cadence, so notify never has to be trusted before
+    /// it has delivered something.
+    /// </summary>
+    private volatile bool _notifyHealthy;
+
+    /// <summary>Whether the live subscription points at the real callback (vs parked).</summary>
+    private volatile bool _subscribedReal;
+
+    /// <summary>
+    /// Watchdog verdict: the real callback poisoned PXRRS with delivery stalls,
+    /// so stay parked for the rest of the session (restart the app to retry).
+    /// </summary>
+    private volatile bool _parkedByWatchdog;
+
+    private readonly object _tenderLock = new();
+    private readonly Queue<long> _stalledCalls = new();
+    private long _lastTenderAtTick;
+    private string? _lastTenderMethod;
+
+    private static bool ForceRealSubscription =>
+        Environment.GetEnvironmentVariable("POS_NOTIFY_SUBSCRIBE_REAL") == "1";
+
     /// <summary>Poll cycles (5s each) between re-claiming the notify callback.</summary>
     private const int ResubscribeCycles = 12;
 
@@ -271,11 +296,15 @@ public sealed class JpxRestLink : ITerminalLink
     }
 
     /// <summary>
-    /// Stand-in for the diagram's <c>notify IS_TRANS_STARTED=1</c>. PXRRS does
-    /// not dispatch custom form events to REST subscribers, so instead watch
-    /// the form the Face button navigates to. Fires on the transition into the
-    /// form, not while it stays there, so holding on the screen does not
-    /// restart the tender.
+    /// Fallback for the notify path: poll the trigger variable (and optionally
+    /// the displayed form) that the tender buttons write. Notify delivery DOES
+    /// work (the earlier "never dispatches" verdict was subscription contention
+    /// — PXRRS holds one subscriber slot, last one wins), but it has real
+    /// failure modes: a stolen slot, a firewalled callback, a terminal restart.
+    /// So the poll runs fast (400ms) until an inbound notify proves delivery,
+    /// then relaxes to a 2s safety net; <see cref="RaiseTender"/> dedupes the
+    /// overlap. Form watching fires on the transition into the form, not while
+    /// it stays there, so holding on the screen does not restart the tender.
     /// </summary>
     private async Task WatchTriggerFormAsync(CancellationToken ct)
     {
@@ -283,7 +312,7 @@ public sealed class JpxRestLink : ITerminalLink
         {
             try
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(400), ct);
+                await Task.Delay(TimeSpan.FromMilliseconds(_notifyHealthy ? 2000 : 400), ct);
             }
             catch (OperationCanceledException)
             {
@@ -327,11 +356,7 @@ public sealed class JpxRestLink : ITerminalLink
             if (!screen.Equals(_triggerForm, StringComparison.OrdinalIgnoreCase)) continue;
 
             Console.WriteLine($"[JpxRestLink] '{screen}' displayed — treating as {_triggerMethod} tender");
-            MessageReceived?.Invoke(new PosMessage
-            {
-                Type = PosMessageTypes.TenderSelected,
-                Method = _triggerMethod,
-            });
+            RaiseTender(_triggerMethod, "form watch");
         }
     }
 
@@ -382,25 +407,33 @@ public sealed class JpxRestLink : ITerminalLink
             var request = context.Request;
             using var reader = new System.IO.StreamReader(request.Body);
             var body = await reader.ReadToEndAsync();
+
+            // Answer before processing anything. PXRRS delivers notifies
+            // synchronously from the same queue that serves our REST calls, so
+            // every millisecond spent inside this handler stalls the terminal
+            // for everyone — a slow subscriber is indistinguishable from an
+            // unreachable one. PAX's node-ECR sample answers a bare 200 "ok"
+            // and that is the shape the terminal is tested against.
             context.Response.StatusCode = StatusCodes.Status200OK;
+            await context.Response.WriteAsync("ok");
+            await context.Response.CompleteAsync();
 
             Console.WriteLine(
                 $"[JpxRestLink] inbound {request.Method} {request.Path}{request.QueryString} " +
                 $"body={(string.IsNullOrWhiteSpace(body) ? "<empty>" : body)}");
 
-            if (!string.IsNullOrWhiteSpace(body))
+            var payload = body;
+            if (string.IsNullOrWhiteSpace(payload))
             {
-                HandleNotify(body);
-                return;
+                // Some senders put the event in the query string instead of a body.
+                var name = request.Query["name"].ToString();
+                var value = request.Query["value"].ToString();
+                if (string.IsNullOrWhiteSpace(name)) return;
+                payload = JsonSerializer.Serialize(new { name, value });
             }
 
-            // Some senders put the event in the query string instead of a body.
-            var name = request.Query["name"].ToString();
-            var value = request.Query["value"].ToString();
-            if (!string.IsNullOrWhiteSpace(name))
-            {
-                HandleNotify(JsonSerializer.Serialize(new { name, value }));
-            }
+            // Off the request thread: MessageReceived handlers run VM code.
+            _ = Task.Run(() => HandleNotify(payload));
         });
 
         await _notifyServer.StartAsync();
@@ -414,6 +447,21 @@ public sealed class JpxRestLink : ITerminalLink
             using var doc = JsonDocument.Parse(body);
             var name = doc.RootElement.TryGetProperty("name", out var n) ? n.GetString() : null;
             var value = doc.RootElement.TryGetProperty("value", out var v) ? v.ToString() : null;
+
+            // Relax the fast trigger poll only once a form EVENT arrives this
+            // way — that is the traffic the poll substitutes for. Anything else
+            // inbound (async EMV command responses, putFile results, test
+            // curls) proves transport but NOT that the tender buttons carry
+            // FireEvent actions; on a package where they only write the
+            // SetVariable trigger, relaxing on those would add up to 2s of
+            // tender latency with nothing to replace it (observed 2026-09-15:
+            // the bench package's Face button fires no event at all).
+            if (!_notifyHealthy && name is EventTransState or "PAYMENTSTATUS")
+            {
+                _notifyHealthy = true;
+                Console.WriteLine(
+                    "[JpxRestLink] form events arriving via notify — trigger poll relaxed to fallback cadence");
+            }
 
             // IS_TRANS_STARTED=2 -> the terminal published TRANS_RESULT.
             if (name == EventTransState && value == "2")
@@ -433,18 +481,51 @@ public sealed class JpxRestLink : ITerminalLink
                         is "face" or "palm" or "card" or "credit" or "debit");
             if (isTender && !string.IsNullOrWhiteSpace(value))
             {
-                Console.WriteLine($"[JpxRestLink] tender selected on the form: {value}");
-                MessageReceived?.Invoke(new PosMessage
+                // The same button press also wrote the SetVariable trigger
+                // mailbox; consume it so the fallback poll cannot re-raise the
+                // tender after we already handled it here.
+                if (_triggerVar.Length > 0)
                 {
-                    Type = PosMessageTypes.TenderSelected,
-                    Method = value.Trim().ToUpperInvariant(),
-                });
+                    _ = Task.Run(() => SetVariableAsync(_triggerVar, "none"));
+                }
+
+                RaiseTender(value.Trim().ToUpperInvariant(), "notify");
             }
         }
         catch (JsonException)
         {
             // Not an event object; ignore.
         }
+    }
+
+    /// <summary>
+    /// The notify callback and the fallback trigger poll can both see the same
+    /// button press (FireEvent and the SetVariable trigger ride on one button);
+    /// whichever route arrives first wins and the echo inside the window is
+    /// dropped. A genuine repeat press lands outside it — while a tender is in
+    /// flight the trigger poll is paused anyway.
+    /// </summary>
+    private void RaiseTender(string method, string source)
+    {
+        var now = Environment.TickCount64;
+        lock (_tenderLock)
+        {
+            if (_lastTenderMethod == method && now - _lastTenderAtTick < 5000)
+            {
+                Console.WriteLine($"[JpxRestLink] duplicate {method} tender via {source} ignored");
+                return;
+            }
+
+            _lastTenderMethod = method;
+            _lastTenderAtTick = now;
+        }
+
+        Console.WriteLine($"[JpxRestLink] tender selected via {source}: {method}");
+        MessageReceived?.Invoke(new PosMessage
+        {
+            Type = PosMessageTypes.TenderSelected,
+            Method = method,
+        });
     }
 
     private async Task FetchResultAsync()
@@ -869,10 +950,12 @@ public sealed class JpxRestLink : ITerminalLink
 
     /// <summary>
     /// winkpos publishes the biometric outcome into a form variable. The
-    /// sequence diagram has PXRRS notify us instead, but no notification has
-    /// ever been observed arriving at this PC, and without a result the sale
-    /// sits on "awaiting" forever — so read the mailbox directly while a
-    /// biometric tender is in flight.
+    /// sequence diagram has PXRRS notify us (IS_TRANS_STARTED=2) and that path
+    /// is live again, but a plain setVariable from winkpos raises no event on a
+    /// stock package and delivery can silently die (stolen subscriber slot,
+    /// firewall) — without a result the sale sits on "awaiting" forever. So the
+    /// mailbox is also read directly while a biometric tender is in flight;
+    /// whichever route lands first stops the other.
     /// </summary>
     private async Task PollForResultAsync(CancellationTokenSource cts)
     {
@@ -971,21 +1054,24 @@ public sealed class JpxRestLink : ITerminalLink
             return true;
         }
 
-        // PARKED subscription. PXRRS serializes its request queue and blocks
-        // ~10s every time it fails to DELIVER a notify (measured; SLOW lines).
-        // Deliveries to this PC fail whenever the macOS/Windows firewall drops
-        // the inbound SYN — which silently recurs on every rebuild — and there
-        // is no unsubscribe API, so an unreachable replyURL poisons every
-        // register call with stalls. Nothing in the demo needs the notify path
-        // (the 400ms trigger poll + the WebSocket carry everything), so point
-        // the subscription at the terminal's own loopback: a delivery attempt
-        // gets an instant connection-refused instead of a 10s timeout, and
-        // re-claiming it here still keeps stray tools from becoming the
-        // subscriber. Set POS_NOTIFY_SUBSCRIBE_REAL=1 to subscribe with the
-        // real callback URL when debugging notify delivery.
-        var subscribeUrl = Environment.GetEnvironmentVariable("POS_NOTIFY_SUBSCRIBE_REAL") == "1"
-            ? _notifyUrl
-            : "http://127.0.0.1:9/notify";
+        // Notify-first: subscribe the real callback so tender FireEvents and
+        // IS_TRANS_STARTED arrive as pushes instead of waiting on the trigger
+        // poll (which PXRRS's periodic lockups starve). The old failure mode —
+        // PXRRS serializes its request queue and blocks ~10s every time it
+        // fails to DELIVER a notify (firewalled callback, and no unsubscribe
+        // API exists) — is handled by the watchdog in NoteLatency: repeated
+        // ~10s stalls re-park the subscription on the terminal's own loopback
+        // (instant connection-refused, no stalls) for the rest of the session,
+        // and the fast polls carry the demo exactly as before. Re-claiming the
+        // slot periodically also keeps stray tools (PAX test tool, node
+        // listeners) from stealing it — last subscriber wins.
+        //   POS_NOTIFY_PARK=1            start parked (the old always-poll mode)
+        //   POS_NOTIFY_SUBSCRIBE_REAL=1  never park, even if the watchdog trips
+        var parked = ForceRealSubscription
+            ? false
+            : _parkedByWatchdog || Environment.GetEnvironmentVariable("POS_NOTIFY_PARK") == "1";
+        var subscribeUrl = parked ? "http://127.0.0.1:9/notify" : _notifyUrl;
+        _subscribedReal = !parked;
         var path = $"/subscribe?replyURL={Uri.EscapeDataString(subscribeUrl)}";
 
         // Plain-http callback: subscribe bare, no certificate — attaching one
@@ -993,7 +1079,7 @@ public sealed class JpxRestLink : ITerminalLink
         if (!subscribeUrl.StartsWith("https", StringComparison.OrdinalIgnoreCase))
         {
             var plainOk = await PostAsync(path, null);
-            Console.WriteLine($"[JpxRestLink] subscribe ({(subscribeUrl == _notifyUrl ? "real callback" : "parked on terminal loopback")}) ok={plainOk}");
+            Console.WriteLine($"[JpxRestLink] subscribe ({(parked ? "parked on terminal loopback" : $"real callback {subscribeUrl}")}) ok={plainOk}");
             return plainOk;
         }
 
@@ -1061,11 +1147,7 @@ public sealed class JpxRestLink : ITerminalLink
 
         await SetVariableAsync(_triggerVar, "none");
         Console.WriteLine($"[JpxRestLink] {_triggerVar}={value} — starting {method} tender");
-        MessageReceived?.Invoke(new PosMessage
-        {
-            Type = PosMessageTypes.TenderSelected,
-            Method = method,
-        });
+        RaiseTender(method, "trigger poll");
         return true;
     }
 
@@ -1108,6 +1190,9 @@ public sealed class JpxRestLink : ITerminalLink
                 Console.WriteLine(
                     $"[JpxRestLink] terminal restarted ({_lastUptime} -> {uptime}) — re-subscribing");
                 _subscribed = false;
+                // Delivery must re-prove itself against the fresh PXRRS before
+                // the trigger poll relaxes again.
+                _notifyHealthy = false;
             }
 
             _lastUptime = uptime;
@@ -1139,7 +1224,7 @@ public sealed class JpxRestLink : ITerminalLink
         }
         finally
         {
-            LogIfSlow("POST " + path, started);
+            NoteLatency("POST " + path, started);
         }
     }
 
@@ -1148,15 +1233,52 @@ public sealed class JpxRestLink : ITerminalLink
     /// stalled its request queue delivering a notify to an unreachable or
     /// TLS-refusing callback. Surfacing it makes "the demo went sluggish"
     /// diagnosable from the console instead of by feel.
+    ///
+    /// Doubles as the notify watchdog: two ~10s stalls inside 90s while we are
+    /// subscribed with the real callback means our replyURL is poisoning PXRRS
+    /// (firewall dropping the inbound SYN is the classic cause, and it silently
+    /// recurs on every rebuild) — re-park the subscription on the terminal's
+    /// loopback and let the fast polls carry the session. PXRRS also stalls
+    /// ~10s on its own once a minute or so, hence two-within-a-window rather
+    /// than a hair trigger on the first.
     /// </summary>
-    private static void LogIfSlow(string what, long startedTickMs)
+    private void NoteLatency(string what, long startedTickMs)
     {
         var elapsed = Environment.TickCount64 - startedTickMs;
-        if (elapsed > 1500)
+        if (elapsed <= 1500) return;
+
+        Console.WriteLine(
+            $"[JpxRestLink] SLOW: {what} took {elapsed / 1000.0:F1}s — PXRRS likely stalled on a notify delivery");
+
+        if (elapsed < 5000) return;                      // ordinary slowness, not the delivery timeout
+        if (!_subscribedReal || _parkedByWatchdog) return; // already parked; stall is PXRRS-internal
+
+        lock (_tenderLock)
         {
-            Console.WriteLine(
-                $"[JpxRestLink] SLOW: {what} took {elapsed / 1000.0:F1}s — PXRRS likely stalled on a notify delivery");
+            var now = Environment.TickCount64;
+            _stalledCalls.Enqueue(now);
+            while (_stalledCalls.Count > 0 && now - _stalledCalls.Peek() > 90_000)
+            {
+                _stalledCalls.Dequeue();
+            }
+
+            if (_stalledCalls.Count < 2) return;
+            _stalledCalls.Clear();
+
+            if (ForceRealSubscription)
+            {
+                Console.WriteLine(
+                    "[JpxRestLink] repeated ~10s stalls but POS_NOTIFY_SUBSCRIBE_REAL=1 — keeping the real callback; check the firewall on this PC");
+                return;
+            }
+
+            _parkedByWatchdog = true;
         }
+
+        _notifyHealthy = false;
+        _subscribed = false; // MaintainLinkAsync re-subscribes (parked) within 5s
+        Console.WriteLine(
+            "[JpxRestLink] repeated ~10s stalls — our callback is poisoning PXRRS (firewall?); parking the subscription and falling back to polling for this session");
     }
 
     private async Task<string?> GetVariableAsync(string name)
@@ -1164,7 +1286,7 @@ public sealed class JpxRestLink : ITerminalLink
         var started = Environment.TickCount64;
         var response = await _http.GetAsync(
             $"{_baseUrl}/getVariable?variableNames={Uri.EscapeDataString(name)}");
-        LogIfSlow($"GET {name}", started);
+        NoteLatency($"GET {name}", started);
         var body = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(body);
         if (!doc.RootElement.TryGetProperty("resultItems", out var items)) return null;

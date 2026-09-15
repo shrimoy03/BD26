@@ -123,24 +123,26 @@ public sealed class PosSettings
 
     /// <summary>
     /// Variable the tender button writes with PxDesigner's SetVariable action,
-    /// holding "face" or "palm". This is the supported way to signal the
-    /// register: FireEvent relies on PXRRS dispatching a notification, which it
-    /// does not do on this terminal, whereas a variable can simply be polled.
-    /// Create it in PxDesigner's variable manager (or reuse a spare stock
-    /// STR.* variable) and set the same name here. Blank disables it.
+    /// holding "face" or "palm". The button's FireEvent notify is the primary
+    /// signal (delivery works — the earlier "never dispatches" verdict was
+    /// subscription contention), but a variable can always be polled, so this
+    /// is the fallback that keeps the demo alive when the notify path dies
+    /// (stolen subscriber slot, firewall). Create it in PxDesigner's variable
+    /// manager (or reuse a spare stock STR.* variable) and set the same name
+    /// here. Blank disables it.
     /// </summary>
     public string BiometricTriggerVariable { get; set; } = "STR.GENERIC_2";
 
     // ----- Mailbox variables -----
     //
-    // The sequence diagram pushes IS_TRANS_STARTED to both parties via notify,
-    // but PXRRS on this terminal accepts a subscription and then never posts
-    // (reproducible with emvDetectICCard, no custom form involved). Every other
-    // arrow in the diagram is already get/setVariable, and the event is really
-    // just a state flag — so the whole flow runs by polling these three, with
-    // no notify at all. Defaults are stock PxRetail variables, verified to
-    // round-trip a full order JSON; point them at PAX's custom names once that
-    // package is installed.
+    // The sequence diagram pushes IS_TRANS_STARTED to both parties via notify.
+    // Notify delivery works (JpxRestLink subscribes the real callback and uses
+    // it), but every other arrow in the diagram is already get/setVariable and
+    // the event is really just a state flag — so the whole flow can also run by
+    // polling these three, which is the fallback whenever delivery is unproven
+    // or the watchdog parked the subscription. Defaults are stock PxRetail
+    // variables, verified to round-trip a full order JSON; point them at PAX's
+    // custom names once that package is installed.
 
     /// <summary>Order details, register -> WinkPay (diagram: START_TRANS_REQ_DATA).</summary>
     public string RequestVariable { get; set; } = "STR.GENERIC_1";
