@@ -169,41 +169,35 @@
                     android:layout_weight="1"
                     android:background="@drawable/bg_card_purple_outline"
                     android:elevation="4dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:orientation="vertical"
                     android:paddingHorizontal="12dp"
                     android:paddingVertical="8dp">
 
-                    <LinearLayout
+                    <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:orientation="vertical">
+                        android:letterSpacing="0.06"
+                        android:text="@string/rewards"
+                        android:textColor="@color/text_dark"
+                        android:textSize="13sp" />
 
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:letterSpacing="0.06"
-                            android:text="@string/rewards"
-                            android:textColor="@color/text_dark"
-                            android:textSize="13sp" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/rewards_amount"
+                        android:textColor="@color/text_dark"
+                        android:textSize="22sp"
+                        android:textStyle="bold" />
 
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:text="@string/rewards_amount"
-                            android:textColor="@color/text_dark"
-                            android:textSize="22sp"
-                            android:textStyle="bold" />
-
-                        <Button
-                            android:id="@+id/rewardsRedeemButton"
-                            style="@style/RedeemButton.Small"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp"
-                            android:text="@string/redeem" />
-                    </LinearLayout>
+                    <Button
+                        android:id="@+id/rewardsRedeemButton"
+                        style="@style/RedeemButton.Small"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/redeem" />
                 </LinearLayout>
             </LinearLayout>
 
