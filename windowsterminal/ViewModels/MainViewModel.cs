@@ -817,6 +817,7 @@ public partial class MainViewModel : ViewModelBase
             };
             Console.WriteLine($"[Register] START_PAYMENT {method} {message.OrderId} amountCents={message.AmountCents}");
             if (method == "CARD") Status = "Have the customer tap their card on the terminal";
+            if (method == "BD_LOYALLIST") Status = "Have the customer insert, swipe, or tap their Bloomingdale's card";
             IsBusy = true;
             _ = Task.Run(async () =>
             {
@@ -1002,6 +1003,7 @@ public partial class MainViewModel : ViewModelBase
     {
         "FACE" or "PALM" or "WINK" => "Bloomingdale's Pay",
         "CARD" => "Bankcard",
+        "BD_LOYALLIST" => "Bloomingdale's Card",
         "CASH" => "Cash",
         null => "Bloomingdale's Card",
         _ => "Bloomingdale's Card",

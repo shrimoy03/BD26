@@ -66,7 +66,8 @@ public sealed class JpxRestLink : ITerminalLink
 
     // Stock PxRetail EMV screens (from getFormList on the A3700/A380 packages),
     // used by the bankcard flow: prompt the tap, ask again, show the outcome.
-    private const string FormTapCard = "CLSSTapCard";
+    /// <summary>Stock insert/swipe/tap prompt; the RetailDemoApplication drives EMV from this form.</summary>
+    private const string FormTapCard = "SwipeScreen";
     private const string FormTapCardAgain = "CLSSTapCardAgain";
     private const string FormApproved = "ApprovedScreen";
     private const string FormDeclined = "DeclinedScreen";
@@ -119,10 +120,18 @@ public sealed class JpxRestLink : ITerminalLink
     private volatile bool _parkedByWatchdog;
 
     private readonly object _tenderLock = new();
+    /// <summary>
+    /// Serialises the screen writers: a cart sync and a biometric handoff must
+    /// never interleave on PXRRS. Without this a sync already in flight when
+    /// Face was pressed landed its BOOL.FOREGROUND=true seconds after the
+    /// handoff's =false and yanked PxRetailer back over the WinkPay camera —
+    /// seen on the A3700 on every press made while items were still ringing.
+    /// </summary>
+    private readonly SemaphoreSlim _screenGate = new(1, 1);
     private readonly Queue<long> _stalledCalls = new();
 
     /// <summary>The bankcard tender the contactless reader is armed for, if any.</summary>
-    private sealed record CardTender(string? OrderId, long AmountCents, string? Currency);
+    private sealed record CardTender(string? OrderId, long AmountCents, string? Currency, string Method);
     private CardTender? _cardTender;
     private int _emvSequence;
 
@@ -802,6 +811,9 @@ public sealed class JpxRestLink : ITerminalLink
         // the customer never sees WinkPay come up.
         if (message.Type == PosMessageTypes.StartPayment && message.Method is "FACE" or "PALM")
         {
+            await _screenGate.WaitAsync();
+            try
+            {
             Console.WriteLine($"[JpxRestLink] {message.Method} tender â€” handing the sale to WinkPay");
 
             // Custom package installed: run the diagram's Phase 2 verbatim â€”
@@ -872,6 +884,11 @@ public sealed class JpxRestLink : ITerminalLink
             Console.WriteLine(
                 $"[JpxRestLink] order published to {_requestVar}, {_stateVar}=1, PxRetailer backgrounded");
             return true;
+            }
+            finally
+            {
+                _screenGate.Release();
+            }
         }
 
         if (message.Type is not (PosMessageTypes.StartPayment or PosMessageTypes.CancelPayment))
@@ -894,7 +911,7 @@ public sealed class JpxRestLink : ITerminalLink
         // lands on the payment-options page; a cancel drops the terminal back
         // to the idle cart screen.
         var stockMode = _startForm != FormStart;
-        var isCard = message.Type == PosMessageTypes.StartPayment && message.Method == "CARD";
+        var isCard = message.Type == PosMessageTypes.StartPayment && message.Method is "CARD" or "BD_LOYALLIST";
         var form = message.Type == PosMessageTypes.CancelPayment
             ? (stockMode ? FormCartIdle : FormStart)
             : isCard ? FormTapCard
@@ -914,7 +931,23 @@ public sealed class JpxRestLink : ITerminalLink
             });
         }
 
+        if (isCard)
+        {
+            // Same batch shape as the RetailDemoApplication: prompt text and amount
+            // for SwipeScreen, then start card detection so insert and swipe work
+            // alongside the contactless read armed in BeginContactlessAsync.
+            commands.Add(new
+            {
+                commandName = "SetVariable",
+                variables = new object[]
+                {
+                    new { name = "STR.SWIPE", value = "Please Insert, Swipe, or Tap Card" },
+                    new { name = "STR.AMOUNTOK", value = "$" + ((message.AmountCents ?? 0) / 100m).ToString("N2") },
+                },
+            });
+        }
         commands.Add(new { commandName = "DisplayForm", formName = form });
+        if (isCard) commands.Add(new { commandName = "EMVDetectICCard" });
         var displayed = await PostAsync("/sendBatchCmd", JsonSerializer.Serialize(commands));
         if (displayed) _lastDisplayedForm = form;
         // Even a cancel back to the cart form counts: the list may have been
@@ -925,7 +958,7 @@ public sealed class JpxRestLink : ITerminalLink
         {
             lock (_tenderLock)
             {
-                _cardTender = new CardTender(message.OrderId, message.AmountCents ?? 0, message.Currency);
+                _cardTender = new CardTender(message.OrderId, message.AmountCents ?? 0, message.Currency, message.Method ?? "CARD");
                 _cardApprovedPending = false;
             }
             Console.WriteLine(
@@ -1045,7 +1078,7 @@ public sealed class JpxRestLink : ITerminalLink
             AmountCents = status == "APPROVED" ? tender.AmountCents : null,
             Currency = tender.Currency,
             Status = status,
-            Method = "CARD",
+            Method = tender.Method,
             Reason = reason,
         });
     }
@@ -1183,9 +1216,37 @@ public sealed class JpxRestLink : ITerminalLink
     /// re-asserts FOREGROUND=true inside the same batch â€” free, and it
     /// self-heals the tracked foreground state if PxRetailer slipped behind
     /// another app without us knowing.
+    private static object[] CartVariables(PosMessage message, bool foreground)
+    {
+        static string Money(long cents) => "$" + (cents / 100m).ToString("N2");
+        var vars = new List<object>();
+        if (foreground) vars.Add(new { name = VarForeground, value = "true" });
+        vars.Add(new { name = "STR.SUBTOTAL", value = Money(message.SubtotalCents ?? 0) });
+        vars.Add(new { name = "STR.TAX", value = Money(message.TaxCents ?? 0) });
+        vars.Add(new { name = "STR.AMOUNTOK", value = Money(message.AmountCents ?? 0) });
+        return vars.ToArray();
+    }
+
     /// </summary>
     private async Task<bool> SendCartAsync(PosMessage message)
     {
+        await _screenGate.WaitAsync();
+        try
+        {
+            return await SendCartCoreAsync(message);
+        }
+        finally
+        {
+            _screenGate.Release();
+        }
+    }
+
+    private async Task<bool> SendCartCoreAsync(PosMessage message)
+    {
+        // A biometric tender is in flight: WinkPay owns the screen. Mirror the
+        // totals (STR.AMOUNTOK feeds WinkPay's stock path) but never assert the
+        // foreground or repaint a form — that is exactly what covered the camera.
+        var biometricInFlight = _resultPoll is not null;
         static string Money(long cents) => "$" + (cents / 100m).ToString("N2");
         static string Line(CartLine item)
         {
@@ -1241,13 +1302,7 @@ public sealed class JpxRestLink : ITerminalLink
             new
             {
                 commandName = "SetVariable",
-                variables = new[]
-                {
-                    new { name = VarForeground, value = "true" },
-                    new { name = "STR.SUBTOTAL", value = Money(message.SubtotalCents ?? 0) },
-                    new { name = "STR.TAX", value = Money(message.TaxCents ?? 0) },
-                    new { name = "STR.AMOUNTOK", value = Money(message.AmountCents ?? 0) },
-                },
+                variables = CartVariables(message, foreground: !biometricInFlight),
             },
         };
 
@@ -1266,7 +1321,7 @@ public sealed class JpxRestLink : ITerminalLink
         // Only re-display when the terminal is showing something else — doing
         // it on every ring makes the terminal blink.
         var idleForm = rows.Count == 0 ? FormSecureIdle : FormCartIdle;
-        var displayIdle = _lastDisplayedForm != idleForm;
+        var displayIdle = !biometricInFlight && _lastDisplayedForm != idleForm;
         if (displayIdle)
         {
             commands.Add(new { commandName = "DisplayForm", formName = idleForm });
@@ -1276,7 +1331,7 @@ public sealed class JpxRestLink : ITerminalLink
         ok &= sent;
         if (sent)
         {
-            _foreground = true;
+            if (!biometricInFlight) _foreground = true;
             if (displayIdle) _lastDisplayedForm = idleForm;
         }
 
