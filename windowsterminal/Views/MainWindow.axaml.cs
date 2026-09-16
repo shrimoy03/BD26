@@ -3,7 +3,9 @@ using System.IO;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using MerchantTerminal.ViewModels;
 
@@ -120,6 +122,24 @@ public partial class MainWindow : Window
     }
 
     private MainViewModel? Vm => DataContext as MainViewModel;
+
+    /// <summary>
+    /// The "x" in the top-right corner. Goes through the application
+    /// lifetime rather than Window.Close() so App's ShutdownRequested handler
+    /// runs and the terminal link is torn down cleanly (PXRRS subscription,
+    /// notify server, WebSocket).
+    /// </summary>
+    private void OnExitClick(object? sender, RoutedEventArgs e)
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.Shutdown();
+        }
+        else
+        {
+            Close();
+        }
+    }
 
     /// <summary>
     /// The scan-gun handlers are window-wide, so they would otherwise swallow

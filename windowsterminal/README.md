@@ -40,7 +40,9 @@ dotnet run          # opens the register in a 1280×800 window
 ```
 
 On Windows the app starts in full-screen kiosk mode automatically
-(`MainWindow.axaml.cs`).
+(`MainWindow.axaml.cs`). The small ✕ in the top-right corner of the title strip
+exits the register (it shuts the app down cleanly, tearing down the terminal
+link), so a mouse is enough to get out of the kiosk.
 
 ## Publish for the Windows all-in-one
 

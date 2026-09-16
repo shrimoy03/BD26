@@ -9,6 +9,7 @@ import http from "node:http";
 
 const variables = new Map();
 const subscribers = new Set();
+const listItems = []; // LIST.ITEM rows as the register renders the basket
 
 const ok = (extra = {}) => JSON.stringify({ message: "OK", resultCode: "0", ...extra });
 
@@ -55,12 +56,21 @@ function handle(pathname, params, body, res) {
       console.log("getVariable:", names.join(","));
       return res.end(ok({ resultItems }));
     }
+    case "/listBoxRemoveItem": {
+      // No itemId -> clear the whole list (how the register rebuilds the basket).
+      listItems.length = 0;
+      console.log("listBoxRemoveItem: cleared");
+      return res.end(ok());
+    }
     case "/sendBatchCmd": {
       const cmds = JSON.parse(body);
       console.log("sendBatchCmd:", cmds.map((c) => c.commandName).join(" + "));
       for (const c of cmds) {
         if (c.commandName === "SetVariable") {
           for (const v of c.variables ?? []) variables.set(v.name, v.value);
+        } else if (c.commandName === "ListBoxInsertItem") {
+          for (const item of c.listItems ?? []) listItems.push(item.text);
+          console.log("  LIST.ITEM now:", JSON.stringify(listItems));
         } else if (c.commandName === "DisplayForm" && c.formName === "StartTransaction") {
           notifyAll("IS_TRANS_STARTED", "1");
           fakeWinkPayApproves();

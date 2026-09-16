@@ -53,6 +53,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly TerminalLinkHost? _host;
     private readonly DispatcherTimer _clock;
     private readonly DispatcherTimer _cartSyncTimer;
+    private readonly DispatcherTimer _cartRetryTimer;
     private readonly DispatcherTimer _flowTimer;      // mock EMV / signature / complete pacing
     private readonly DispatcherTimer _signatureTimer; // 89-second signature countdown
     private int _uid = 1;
@@ -78,6 +79,7 @@ public partial class MainViewModel : ViewModelBase
         {
             _link.ClientConnected += () => OnUiThread(() =>
             {
+                Console.WriteLine("[Register] customer terminal connected — mirroring the basket");
                 IsTerminalConnected = true;
                 Status = "Customer terminal connected";
                 _lastCartJson = null;
@@ -89,12 +91,34 @@ public partial class MainViewModel : ViewModelBase
                 Status = "Customer terminal disconnected";
             });
             _link.MessageReceived += m => OnUiThread(() => HandleTerminalMessage(m));
+
+            // The link starts before this view model exists, and a fast
+            // terminal (or the local fake) reports connected before the
+            // subscription above is in place. Missing that one event left the
+            // register "Offline" with the basket never mirrored until the next
+            // link blip — so seed from the live state after subscribing;
+            // whichever of the two lands first wins, the other is a no-op.
+            if (_link.IsConnected && !IsTerminalConnected)
+            {
+                Console.WriteLine("[Register] customer terminal already connected at startup");
+                IsTerminalConnected = true;
+                Status = "Customer terminal connected";
+            }
         }
 
         // Short debounce: still coalesces a scan-gun burst, but a single ring
         // hits the terminal fast. The sync itself is one batched call now.
         _cartSyncTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
         _cartSyncTimer.Tick += (_, _) => FlushCartSync();
+
+        // Failed sends retry on this slower cadence instead of every 120ms,
+        // so a terminal that is refusing (or mid-restart) is not hammered.
+        _cartRetryTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _cartRetryTimer.Tick += (_, _) =>
+        {
+            _cartRetryTimer.Stop();
+            QueueCartSync();
+        };
 
         _flowTimer = new DispatcherTimer();
         _flowTimer.Tick += (_, _) =>
@@ -743,6 +767,7 @@ public partial class MainViewModel : ViewModelBase
         {
             var ok = await _link.SendAsync(new PosMessage { Type = PosMessageTypes.ShowRetailer });
             Status = ok ? "PxRetailer brought to the foreground" : "Could not reach the terminal";
+            if (ok) ResyncCart(); // redraw the basket on the reclaimed screen
         }
         finally
         {
@@ -804,6 +829,7 @@ public partial class MainViewModel : ViewModelBase
                         _terminalOrderId = null;
                         _awaitingMethod = null;
                         Status = "Customer terminal unreachable";
+                        ResyncCart();
                     }
                 });
             });
@@ -844,6 +870,9 @@ public partial class MainViewModel : ViewModelBase
         IsAwaitingTerminal = false;
         _terminalOrderId = null;
         _awaitingMethod = null;
+        // The terminal went through the tender screens (or WinkPay); put the
+        // basket back on it rather than trusting what was there before.
+        ResyncCart();
     }
 
     private void HandleTerminalMessage(PosMessage m)
@@ -949,6 +978,7 @@ public partial class MainViewModel : ViewModelBase
                 Status = m.Reason ?? "Payment declined on customer terminal";
                 Stage = RegisterStage.Checkout;
                 Refresh();
+                ResyncCart();
                 break;
             case "CANCELLED" when m.Reason == "SIGNED_OUT":
                 // The customer signed out of WinkPay mid-sale — void the whole
@@ -962,6 +992,7 @@ public partial class MainViewModel : ViewModelBase
                 Status = "Payment cancelled on customer terminal";
                 Stage = RegisterStage.Checkout;
                 Refresh();
+                ResyncCart();
                 break;
         }
     }
@@ -1035,6 +1066,16 @@ public partial class MainViewModel : ViewModelBase
     private string? _lastCartJson;
     private bool _cartSyncInFlight;
     private bool _cartSyncDirty;
+    private int _cartSyncGeneration;
+    private long _cartSyncStartedMs;
+
+    /// <summary>
+    /// A send that has not come back in this long is treated as lost. PXRRS
+    /// stalls ~10s on a bad notify delivery and the HTTP timeout is 30s; without
+    /// this one hung request would freeze the customer's basket for the rest
+    /// of the sale, because single-flight would keep every later sync parked.
+    /// </summary>
+    private static readonly TimeSpan CartSyncStallLimit = TimeSpan.FromSeconds(12);
 
     /// <summary>
     /// Debounced push of the basket to the customer terminal. Called from
@@ -1052,8 +1093,23 @@ public partial class MainViewModel : ViewModelBase
         {
             return;
         }
-        _cartSyncTimer.Stop();
-        _cartSyncTimer.Start();
+        // Do not restart a running timer: a trailing debounce that resets on
+        // every change never fires while items are ringing in faster than the
+        // interval, and the customer screen sits frozen until the operator
+        // pauses. Letting the first change's timer run gives a bounded delay;
+        // single-flight below coalesces whatever else arrives meanwhile.
+        if (!_cartSyncTimer.IsEnabled) _cartSyncTimer.Start();
+    }
+
+    /// <summary>
+    /// Push the basket again even if it has not changed — for when the
+    /// terminal was showing something else (a tender screen, WinkPay) and
+    /// the cart form has to be reclaimed and redrawn.
+    /// </summary>
+    private void ResyncCart()
+    {
+        _lastCartJson = null;
+        QueueCartSync();
     }
 
     /// <summary>
@@ -1074,8 +1130,18 @@ public partial class MainViewModel : ViewModelBase
 
         if (_cartSyncInFlight)
         {
-            _cartSyncDirty = true;
-            return;
+            if (Environment.TickCount64 - _cartSyncStartedMs < CartSyncStallLimit.TotalMilliseconds)
+            {
+                _cartSyncDirty = true;
+                return;
+            }
+            // Abandon the stalled send: bump the generation so its completion
+            // is ignored, and let the current basket state go out now.
+            Console.WriteLine("[Register] cart sync stalled — abandoning it and resending the basket");
+            _cartSyncGeneration++;
+            _cartSyncInFlight = false;
+            _cartSyncDirty = false;
+            _lastCartJson = null;
         }
 
         var message = BuildCartMessage();
@@ -1083,14 +1149,32 @@ public partial class MainViewModel : ViewModelBase
         if (json == _lastCartJson) return;
         _lastCartJson = json;
         _cartSyncInFlight = true;
+        _cartSyncStartedMs = Environment.TickCount64;
+        var generation = _cartSyncGeneration;
         _ = Task.Run(async () =>
         {
-            var ok = await _link.SendAsync(message);
+            bool ok;
+            try
+            {
+                ok = await _link.SendAsync(message);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"[Register] cart sync threw: {e.Message}");
+                ok = false;
+            }
             OnUiThread(() =>
             {
+                if (generation != _cartSyncGeneration) return; // superseded by the stall watchdog
                 _cartSyncInFlight = false;
-                if (!ok) _lastCartJson = null; // retry below / on next change
-                if (_cartSyncDirty || !ok)
+                if (!ok)
+                {
+                    _lastCartJson = null;
+                    _cartSyncDirty = false;
+                    if (!_cartRetryTimer.IsEnabled) _cartRetryTimer.Start();
+                    return;
+                }
+                if (_cartSyncDirty)
                 {
                     _cartSyncDirty = false;
                     QueueCartSync();

@@ -10,6 +10,7 @@
         Width="1280" Height="800"
         Background="#C9C4B2"
         FontFamily="{StaticResource Sans}"
+        Icon="avares://MerchantTerminal/Assets/bloomingdales.ico"
         Title="Bloomingdale's POS">
 
     <Design.DataContext>
@@ -27,11 +28,42 @@
         <KeyBinding Gesture="Delete" Command="{Binding DeleteLineCommand}" />
     </Window.KeyBindings>
 
+    <Window.Styles>
+        <!-- Exit button: a quiet "x" on the red end of the title strip that
+             brightens on hover. The kiosk window has no OS chrome, so this is
+             the one mouse-reachable way out. -->
+        <Style Selector="Button.exit">
+            <Setter Property="Background" Value="#00000000" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Foreground" Value="#F4E8E8" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.exit:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#C8B4181E" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+        </Style>
+        <Style Selector="Button.exit:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FF5F0F18" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+        </Style>
+    </Window.Styles>
+
     <Viewbox Stretch="Uniform">
         <Panel x:Name="RootCanvas" Width="1600" Height="1000" Background="#C9C4B2">
             <v:RegisterView />
             <v:ItemsOverlay IsVisible="{Binding ShowItems}" />
             <v:SetupOverlay IsVisible="{Binding ShowSetup}" />
+
+            <!-- Sits above every overlay so the app can always be closed with the mouse. -->
+            <Button Classes="exit" Click="OnExitClick" ToolTip.Tip="Exit register"
+                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Width="26" Height="26" Margin="0,4,6,0">
+                <Path Data="M0,0 L10,10 M10,0 L0,10" Width="10" Height="10"
+                      Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="2"
+                      StrokeLineCap="Round" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Button>
         </Panel>
     </Viewbox>
 </Window>

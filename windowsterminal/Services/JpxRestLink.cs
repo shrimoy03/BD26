@@ -622,6 +622,14 @@ public sealed class JpxRestLink : ITerminalLink
             if (connected != _connected)
             {
                 _connected = connected;
+                // Whatever was on the screen before the blip is unknown now —
+                // PxRetailer may have restarted with an empty list and its
+                // default form. Force the next cart sync to rebuild and
+                // re-display rather than append onto rows that are gone.
+                // (Flag only — this runs off the send lock, and the row list
+                // is owned by SendCartAsync, which clears it on rebuild.)
+                _cartNeedsRebuild = true;
+                _lastDisplayedForm = null;
                 Console.WriteLine($"[JpxRestLink] terminal {(connected ? "connected" : "disconnected")} ({_baseUrl})");
                 if (connected) ClientConnected?.Invoke();
                 else
@@ -738,6 +746,7 @@ public sealed class JpxRestLink : ITerminalLink
             {
                 _foreground = true;
                 _lastDisplayedForm = PosSettings.StockStartForm;
+                InvalidateCartRender();
             }
             return shown;
         }
@@ -769,6 +778,7 @@ public sealed class JpxRestLink : ITerminalLink
                 if (await PostAsync("/sendBatchCmd", JsonSerializer.Serialize(batch)))
                 {
                     _lastDisplayedForm = FormStart;
+                    InvalidateCartRender();
                     StartResultPolling(); // fallback if the =2 notify never lands
                     var handed = await SetForegroundAsync(false);
                     Console.WriteLine(
@@ -811,6 +821,7 @@ public sealed class JpxRestLink : ITerminalLink
             }
 
             _foreground = false;
+            InvalidateCartRender(); // WinkPay owns the screen until the next cart sync reclaims it
             StartResultPolling();
             Console.WriteLine(
                 $"[JpxRestLink] order published to {_requestVar}, {_stateVar}=1, PxRetailer backgrounded");
@@ -857,11 +868,34 @@ public sealed class JpxRestLink : ITerminalLink
         commands.Add(new { commandName = "DisplayForm", formName = form });
         var displayed = await PostAsync("/sendBatchCmd", JsonSerializer.Serialize(commands));
         if (displayed) _lastDisplayedForm = form;
+        // Even a cancel back to the cart form counts: the list may have been
+        // reset by the form navigation in between, so rebuild on the next sync.
+        InvalidateCartRender();
         return displayed;
     }
 
     /// <summary>Rows as last rendered on the terminal, for the append fast path.</summary>
     private readonly List<string> _renderedRows = new();
+
+    /// <summary>
+    /// True whenever LIST.ITEM on the terminal may not match <see cref="_renderedRows"/>:
+    /// at startup and on every (re)connect (PxRetailer may have restarted with an
+    /// empty list), after any screen other than the cart was shown (form
+    /// navigation can re-instantiate the control), and after a failed or
+    /// partial cart send. The next sync then clears and rebuilds the list
+    /// instead of appending onto rows that may no longer be there — the
+    /// append fast path is only taken from a state we positively know.
+    /// </summary>
+    private bool _cartNeedsRebuild = true;
+
+    /// <summary>Consecutive ListBoxRemoveItem failures; see <see cref="SendCartAsync"/>.</summary>
+    private int _cartClearFailures;
+
+    private void InvalidateCartRender()
+    {
+        _cartNeedsRebuild = true;
+        _renderedRows.Clear();
+    }
 
     /// <summary>
     /// Mirror the register basket onto PxRetailer's stock idle screen:
@@ -892,14 +926,41 @@ public sealed class JpxRestLink : ITerminalLink
 
         // Append-only when the rendered rows are a strict prefix of the new
         // ones; anything else (void, qty change, new sale) needs the rebuild.
-        var appendOnly = rows.Count >= _renderedRows.Count
+        // Never append while the terminal's list is in doubt (see
+        // _cartNeedsRebuild) — that is how a stale belief turns into a
+        // basket with rows missing or doubled after a few transactions.
+        var appendOnly = !_cartNeedsRebuild
+            && rows.Count >= _renderedRows.Count
             && _renderedRows.SequenceEqual(rows.Take(_renderedRows.Count));
 
         var ok = true;
+        var listKnownEmpty = appendOnly;
         if (!appendOnly)
         {
-            ok = await PostAsync("/listBoxRemoveItem", """{"listControlId":"LIST.ITEM"}""");
+            var cleared = await PostAsync("/listBoxRemoveItem", """{"listControlId":"LIST.ITEM"}""");
             _renderedRows.Clear();
+            if (cleared)
+            {
+                _cartClearFailures = 0;
+                listKnownEmpty = true;
+            }
+            else if (++_cartClearFailures >= 3)
+            {
+                // Clearing keeps failing — most plausibly the list is already
+                // empty and this package rejects a no-op remove. Refusing to
+                // draw forever would be worse than a possible duplicate, so
+                // assume empty and carry on; a later successful clear resets.
+                Console.WriteLine(
+                    $"[JpxRestLink] listBoxRemoveItem failed {_cartClearFailures}x in a row — assuming LIST.ITEM is empty");
+                listKnownEmpty = true;
+            }
+            else
+            {
+                // Unknown list contents: update the totals below, but do not
+                // insert rows on top of what may still be there. The caller
+                // retries and the clear runs again.
+                ok = false;
+            }
         }
 
         var commands = new List<object>
@@ -917,7 +978,7 @@ public sealed class JpxRestLink : ITerminalLink
             },
         };
 
-        if (rows.Count > _renderedRows.Count)
+        if (listKnownEmpty && rows.Count > _renderedRows.Count)
         {
             var listItems = new object[rows.Count - _renderedRows.Count];
             for (var i = _renderedRows.Count; i < rows.Count; i++)
@@ -944,12 +1005,19 @@ public sealed class JpxRestLink : ITerminalLink
         {
             _foreground = true;
             if (displayIdle) _lastDisplayedForm = idleForm;
+        }
+
+        if (ok)
+        {
+            // Everything landed: the terminal shows exactly `rows`, so the
+            // next ring may take the append fast path.
             _renderedRows.Clear();
             _renderedRows.AddRange(rows);
+            _cartNeedsRebuild = false;
         }
         else
         {
-            _renderedRows.Clear(); // force a full rebuild on the next sync
+            InvalidateCartRender(); // full rebuild on the retry
         }
         return ok;
     }
