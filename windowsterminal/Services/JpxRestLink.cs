@@ -501,8 +501,14 @@ public sealed class JpxRestLink : ITerminalLink
             {
                 // The same button press also wrote the SetVariable trigger
                 // mailbox; consume it so the fallback poll cannot re-raise the
-                // tender after we already handled it here.
-                if (_triggerVar.Length > 0)
+                // tender after we already handled it here. NOT when the trigger
+                // doubles as the state mailbox (stock package: both are
+                // STR.GENERIC_2): the handoff below replaces "face" with "1" for
+                // WinkPay itself, and this fire-and-forget "none" lands seconds
+                // later on top of that flag — observed on the A3700 after every
+                // notify-driven sale. The poll's TenderInFlight guard stops the
+                // re-raise in that case.
+                if (_triggerVar.Length > 0 && _triggerVar != _stateVar)
                 {
                     _ = Task.Run(() => SetVariableAsync(_triggerVar, "none"));
                 }
