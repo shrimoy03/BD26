@@ -59,6 +59,10 @@ public sealed class JpxRestLink : ITerminalLink
     private const string VarForeground = "BOOL.FOREGROUND";
     private const string EventTransState = "IS_TRANS_STARTED";
     private const string FormStart = "StartTransaction";
+    /// <summary>Stock cart screen — shown once the basket has at least one line.</summary>
+    private const string FormCartIdle = "BackgroundScreen";
+    /// <summary>Stock secure idle screen — the default while the basket is empty.</summary>
+    private const string FormSecureIdle = "SecureBackgroundScreen";
 
     public event Action? ClientConnected;
     public event Action? ClientDisconnected;
@@ -826,7 +830,7 @@ public sealed class JpxRestLink : ITerminalLink
         // drops the terminal back to the idle cart screen.
         var stockMode = _startForm != FormStart;
         var form = message.Type == PosMessageTypes.CancelPayment
-            ? (stockMode ? "BackgroundScreen" : FormStart)
+            ? (stockMode ? FormCartIdle : FormStart)
             : stockMode && message.Method == "CARD" ? "InsertTapScreen"
             : _startForm;
 
@@ -917,12 +921,15 @@ public sealed class JpxRestLink : ITerminalLink
             commands.Add(new { commandName = "ListBoxInsertItem", listControlId = "LIST.ITEM", listItems });
         }
 
-        // Only re-display the idle form when the terminal is showing something
-        // else â€” re-displaying it on every ring makes the terminal blink.
-        var displayIdle = _lastDisplayedForm != "BackgroundScreen";
+        // Empty basket -> the secure idle screen; the first item rings the cart
+        // screen in, and a void back to empty or a new sale returns to secure.
+        // Only re-display when the terminal is showing something else — doing
+        // it on every ring makes the terminal blink.
+        var idleForm = rows.Count == 0 ? FormSecureIdle : FormCartIdle;
+        var displayIdle = _lastDisplayedForm != idleForm;
         if (displayIdle)
         {
-            commands.Add(new { commandName = "DisplayForm", formName = "BackgroundScreen" });
+            commands.Add(new { commandName = "DisplayForm", formName = idleForm });
         }
 
         var sent = await PostAsync("/sendBatchCmd", JsonSerializer.Serialize(commands));
@@ -930,7 +937,7 @@ public sealed class JpxRestLink : ITerminalLink
         if (sent)
         {
             _foreground = true;
-            if (displayIdle) _lastDisplayedForm = "BackgroundScreen";
+            if (displayIdle) _lastDisplayedForm = idleForm;
             _renderedRows.Clear();
             _renderedRows.AddRange(rows);
         }
