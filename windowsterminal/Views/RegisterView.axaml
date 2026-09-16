@@ -491,7 +491,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
                     <ProgressBar IsIndeterminate="True" Width="130" Height="7"
                                  Foreground="#8A1E27" Background="#E0D2B0" />
-                    <TextBlock Text="Please wait..." FontSize="17" FontWeight="Bold" />
+                    <TextBlock Text="{Binding BusyText}" FontSize="17" FontWeight="Bold" />
                 </StackPanel>
             </Border>
         </Border>

@@ -185,6 +185,10 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
 
+    /// <summary>Caption under the busy overlay's progress bar.</summary>
+    [ObservableProperty]
+    public partial string BusyText { get; set; } = "Please wait...";
+
     [ObservableProperty]
     public partial int SignatureSecondsLeft { get; set; } = 89;
 
@@ -645,10 +649,45 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private async Task CancelTransactionAsync()
     {
-        if (ShowSetup) return;
-        await CancelTerminalPaymentAsync();
-        NewSale();
-        Status = "Transaction canceled";
+        if (ShowSetup || IsBusy) return;
+
+        // Cancelling is not instant on the customer side: the cancel message,
+        // the list clear and the idle-screen redraw are three serialised PXRRS
+        // calls at 1-3s each. Keep the busy overlay up until the empty-basket
+        // sync has actually completed, so the operator is not left wondering
+        // whether the press registered.
+        BusyText = "Canceling transaction...";
+        IsBusy = true;
+        try
+        {
+            await CancelTerminalPaymentAsync();
+            NewSale();
+            await WaitForCartSyncAsync(TimeSpan.FromSeconds(8));
+            Status = "Transaction canceled";
+        }
+        finally
+        {
+            IsBusy = false;
+            BusyText = "Please wait...";
+        }
+    }
+
+    /// <summary>
+    /// Flush the pending cart sync now (skipping the debounce) and wait until
+    /// nothing is in flight or dirty — i.e. the terminal has been redrawn — or
+    /// until <paramref name="timeout"/> elapses. Returns at once when the
+    /// terminal is not connected (there is nothing to wait for).
+    /// </summary>
+    private async Task WaitForCartSyncAsync(TimeSpan timeout)
+    {
+        if (_link is null || !IsTerminalConnected) return;
+        FlushCartSync();
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline
+               && (_cartSyncInFlight || _cartSyncDirty || _cartSyncTimer.IsEnabled))
+        {
+            await Task.Delay(100);
+        }
     }
 
     /// <summary>F6 — bypass loyalty and go straight to merchandise.</summary>
