@@ -128,6 +128,8 @@ public sealed class JpxRestLink : ITerminalLink
     /// seen on the A3700 on every press made while items were still ringing.
     /// </summary>
     private readonly SemaphoreSlim _screenGate = new(1, 1);
+    /// <summary>Tick of the last tender raised by the customer's button (notify or poll), 0 if none.</summary>
+    private long _lastButtonTenderAtTick;
     private readonly Queue<long> _stalledCalls = new();
 
     /// <summary>The bankcard tender the contactless reader is armed for, if any.</summary>
@@ -609,6 +611,7 @@ public sealed class JpxRestLink : ITerminalLink
         }
 
         Console.WriteLine($"[JpxRestLink] tender selected via {source}: {method}");
+        if (source != "register") _lastButtonTenderAtTick = Environment.TickCount64;
         MessageReceived?.Invoke(new PosMessage
         {
             Type = PosMessageTypes.TenderSelected,
@@ -856,6 +859,8 @@ public sealed class JpxRestLink : ITerminalLink
                 Console.WriteLine(
                     "[JpxRestLink] Phase-2 batch failed â€” using the mailbox handshake from now on (custom package not installed)");
             }
+
+            await SettleButtonWritesAsync();
 
             // Stock package: mailboxes stand in for the notify. Publish the
             // order, raise the handshake flag WinkPay polls, and drop
@@ -1281,11 +1286,18 @@ public sealed class JpxRestLink : ITerminalLink
         var listKnownEmpty = appendOnly;
         if (!appendOnly)
         {
-            // The clear rides in the same batch as the redraw (below), the way
-            // the RetailDemoApplication does it: one PXRRS round trip instead
-            // of two, which matters when each one takes 1-3s.
+            // Standalone clear first — the RetailDemoApplication does this too. A
+            // listBoxRemoveItem folded into the redraw batch is accepted but does
+            // NOT clear the list (rows piled up: 7 lines for a 3-item basket), so
+            // this is one round trip we keep.
+            var cleared = await PostAsync("/listBoxRemoveItem", """{"listControlId":"LIST.ITEM"}""");
             _renderedRows.Clear();
-            listKnownEmpty = true;
+            listKnownEmpty = cleared;
+            if (!cleared)
+            {
+                Console.WriteLine("[JpxRestLink] listBoxRemoveItem failed — totals only this pass, rows rebuilt on the next sync");
+                ok = false;
+            }
         }
 
         var commands = new List<object>
@@ -1296,17 +1308,6 @@ public sealed class JpxRestLink : ITerminalLink
                 variables = CartVariables(message, foreground: !biometricInFlight),
             },
         };
-        if (!appendOnly)
-        {
-            // itemId 65535 = every row; PXRRS applies it silently (no per-command
-            // result in the batch reply), so an already-empty list cannot fail the sync.
-            commands.Insert(0, new
-            {
-                commandName = "listBoxRemoveItem",
-                listControlId = "LIST.ITEM",
-                listItems = new object[] { new { itemId = 65535 } },
-            });
-        }
 
         if (listKnownEmpty && rows.Count > _renderedRows.Count)
         {
@@ -1373,6 +1374,34 @@ public sealed class JpxRestLink : ITerminalLink
         JsonSerializer.Serialize(new { variables = new[] { new { name, value } } }));
 
     /// <summary>
+    /// The stock Face/Palm button fires its IS_TRANS_STARTED event BEFORE its
+    /// own SetVariable actions land (GENERIC_2="face", GENERIC_1=""), and
+    /// those arrive 1-2s later through PXRRS's serialised queue — on top of
+    /// whatever we published in between. Seen on the A3700 on every press:
+    /// "order published" followed two seconds later by the mailbox reading
+    /// face/empty. So after a button-raised tender, wait until the button's
+    /// write is visible (or 4s) before publishing, so ours is the last write.
+    /// Register-initiated tenders (test keys) have no button and skip this.
+    /// </summary>
+    private async Task SettleButtonWritesAsync()
+    {
+        if (Environment.TickCount64 - _lastButtonTenderAtTick > 15_000) return;
+        var started = Environment.TickCount64;
+        while (Environment.TickCount64 - started < 4000)
+        {
+            string? v = null;
+            try { v = await GetVariableAsync(_stateVar); } catch (Exception) { }
+            if (v?.Trim().ToUpperInvariant() is "FACE" or "PALM")
+            {
+                Console.WriteLine($"[JpxRestLink] button write landed on {_stateVar} after {Environment.TickCount64 - started}ms — publishing now");
+                return;
+            }
+            await Task.Delay(400);
+        }
+        Console.WriteLine($"[JpxRestLink] button write not seen on {_stateVar} within 4s — publishing anyway");
+    }
+
+    /// <summary>
     /// The published order must survive until WinkPay claims it. On the
     /// A3700 it did not always: STR.GENERIC_1 came back empty and the flag
     /// "none" seconds after a successful handoff (a second Face press — the
@@ -1382,7 +1411,8 @@ public sealed class JpxRestLink : ITerminalLink
     /// </summary>
     private async Task VerifyHandoffAsync(object[] handoff, string? orderId)
     {
-        foreach (var delayMs in new[] { 2000, 3000 })
+        var republished = 0;
+        foreach (var delayMs in new[] { 2000, 2500, 3000, 3000, 4000 })
         {
             await Task.Delay(delayMs);
             if (_resultPoll is null) return; // sale finished or cancelled meanwhile
@@ -1403,7 +1433,7 @@ public sealed class JpxRestLink : ITerminalLink
             {
                 _foreground = false;
             }
-            return;
+            if (++republished >= 3) return; // the button's writes should long be over by now
         }
     }
 
