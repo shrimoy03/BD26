@@ -816,6 +816,7 @@ public partial class MainViewModel : ViewModelBase
                 Method = method,
             };
             Console.WriteLine($"[Register] START_PAYMENT {method} {message.OrderId} amountCents={message.AmountCents}");
+            if (method == "CARD") Status = "Have the customer tap their card on the terminal";
             IsBusy = true;
             _ = Task.Run(async () =>
             {
@@ -1000,6 +1001,7 @@ public partial class MainViewModel : ViewModelBase
     private static string TenderLabelFor(string? method) => method switch
     {
         "FACE" or "PALM" or "WINK" => "Bloomingdale's Pay",
+        "CARD" => "Bankcard",
         "CASH" => "Cash",
         null => "Bloomingdale's Card",
         _ => "Bloomingdale's Card",

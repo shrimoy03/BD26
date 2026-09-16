@@ -75,8 +75,17 @@ Behavior on the register:
 - **T1 Bloomingdale's Card / Bloomingdale's Pay** (checkout) sends
   `START_PAYMENT` with `method: BD_LOYALLIST` — the PxRetailer payment-options
   page where the customer can pick face/palm (WinkPay). **T2 Bankcard** sends
-  `method: CARD` for straight EMV. With no terminal connected, the card flow is
-  simulated (card-in → signature screen) so the demo still works standalone.
+  `method: CARD`: in `jpxss` mode the register shows PxRetailer's stock
+  `CLSSTapCard` screen and arms the contactless reader itself over PXRRS
+  (`emvBeginContactlessTxn`, mandatory TLVs 9F02/9F03/9C/9A/9F21/5F2A/5F36/9F41,
+  45 s timeout, re-armed while the tender is live). The reader's asynchronous
+  result lands on the notify callback as a JSON object with `commandName`; a
+  clean result is the demo's authorization — the sale completes as "Bankcard",
+  `emvEndContactlessTxn` closes the kernel transaction and SHOW_THANKS paints
+  `ApprovedScreen`. `0x65` re-prompts with `CLSSTapCardAgain`, `0x88` cancels
+  the tender, other EMV failures decline it and show `DeclinedScreen`. With no
+  terminal connected, the card flow is simulated (card-in → signature screen)
+  so the demo still works standalone.
 - The basket is mirrored to the terminal (`DISPLAY_CART`) on every change.
 - Esc during the card stage sends `CANCEL_PAYMENT` and returns to checkout;
   F3 cancels the whole transaction.
@@ -235,8 +244,11 @@ permissions — the app renders itself to PNG and exits):
 - `POS_SCREENSHOT_DIR=<dir> dotnet run` — walks every screen in both themes,
   writes `01-register-dark.png` … `08-register-light.png`.
 - `POS_TERMINAL_TEST_DIR=<dir> dotnet run` — waits for a terminal client,
-  runs a card tender, captures awaiting/result states. Pair with
-  `tools/fake-terminal.mjs`.
+  runs a tender, captures awaiting/result states. Pair with
+  `tools/fake-terminal.mjs`, or with `tools/fake-jpxss.mjs` in `jpxss` mode.
+  `POS_TERMINAL_TEST_METHOD=CARD` runs the bankcard (EMV tap) flow instead of
+  Bloomingdale's Pay; the fake's `FAKE_TAP=tap|timeout|cancel` picks how the
+  simulated customer answers the tap prompt.
 
 ## Layout
 

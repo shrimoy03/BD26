@@ -64,6 +64,16 @@ public sealed class JpxRestLink : ITerminalLink
     /// <summary>Stock secure idle screen — the default while the basket is empty.</summary>
     private const string FormSecureIdle = "SecureBackgroundScreen";
 
+    // Stock PxRetail EMV screens (from getFormList on the A3700/A380 packages),
+    // used by the bankcard flow: prompt the tap, ask again, show the outcome.
+    private const string FormTapCard = "CLSSTapCard";
+    private const string FormTapCardAgain = "CLSSTapCardAgain";
+    private const string FormApproved = "ApprovedScreen";
+    private const string FormDeclined = "DeclinedScreen";
+
+    /// <summary>Seconds the contactless reader waits for a tap per arm; re-armed while the tender is live.</summary>
+    private const int ContactlessTimeoutSeconds = 45;
+
     public event Action? ClientConnected;
     public event Action? ClientDisconnected;
     public event Action<PosMessage>? MessageReceived;
@@ -110,6 +120,18 @@ public sealed class JpxRestLink : ITerminalLink
 
     private readonly object _tenderLock = new();
     private readonly Queue<long> _stalledCalls = new();
+
+    /// <summary>The bankcard tender the contactless reader is armed for, if any.</summary>
+    private sealed record CardTender(string? OrderId, long AmountCents, string? Currency);
+    private CardTender? _cardTender;
+    private int _emvSequence;
+
+    /// <summary>
+    /// A bankcard sale was just approved on this link: the register's SHOW_THANKS
+    /// should paint PxRetailer's approved screen (there is no WinkPay page to
+    /// leave on screen in that flow).
+    /// </summary>
+    private bool _cardApprovedPending;
     private long _lastTenderAtTick;
     private string? _lastTenderMethod;
 
@@ -463,6 +485,15 @@ public sealed class JpxRestLink : ITerminalLink
         try
         {
             using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("commandName", out var cmd)
+                && cmd.GetString() is { Length: > 0 } commandName)
+            {
+                // Asynchronous command outcome (EMV reader etc.), not a form event.
+                HandleEmvResponse(commandName, doc.RootElement);
+                return;
+            }
+
             var name = doc.RootElement.TryGetProperty("name", out var n) ? n.GetString() : null;
             var value = doc.RootElement.TryGetProperty("value", out var v) ? v.ToString() : null;
 
@@ -695,6 +726,21 @@ public sealed class JpxRestLink : ITerminalLink
 
         if (message.Type == PosMessageTypes.ShowThanks)
         {
+            // Bankcard sale: PxRetailer owned the screen throughout, so it also
+            // shows the outcome. The next sale's cart sync brings the idle
+            // screen back.
+            if (_cardApprovedPending)
+            {
+                _cardApprovedPending = false;
+                var approvedShown = await PostAsync(
+                    "/sendBatchCmd",
+                    JsonSerializer.Serialize(new object[] { new { commandName = "DisplayForm", formName = FormApproved } }));
+                if (approvedShown) _lastDisplayedForm = FormApproved;
+                InvalidateCartRender();
+                Console.WriteLine($"[JpxRestLink] bankcard sale complete — {FormApproved} shown={approvedShown}");
+                return approvedShown;
+            }
+
             // Sale resolved â€” end the mailbox result poll (the result came in
             // over the WebSocket). WinkPay is showing its own thank-you page,
             // so no screen change here either: PxRetailer is reclaimed by the
@@ -838,17 +884,20 @@ public sealed class JpxRestLink : ITerminalLink
         if (message.Type == PosMessageTypes.CancelPayment)
         {
             StopResultPolling();
+            DisarmCardTender("cancelled by the register");
             await SetForegroundAsync(true);
         }
 
-        // Stock-form mode (custom StartTransaction package not installed yet):
-        // CARD tenders jump straight into the EMV prompt, everything else
-        // (BD Loyallist Pay) lands on the payment-options page; a cancel
-        // drops the terminal back to the idle cart screen.
+        // Bankcard: the register drives the EMV contactless read itself over
+        // PXRRS (semi-integrated) — show the stock tap prompt and arm the
+        // reader below. Everything else in stock-form mode (BD Loyallist Pay)
+        // lands on the payment-options page; a cancel drops the terminal back
+        // to the idle cart screen.
         var stockMode = _startForm != FormStart;
+        var isCard = message.Type == PosMessageTypes.StartPayment && message.Method == "CARD";
         var form = message.Type == PosMessageTypes.CancelPayment
             ? (stockMode ? FormCartIdle : FormStart)
-            : stockMode && message.Method == "CARD" ? "InsertTapScreen"
+            : isCard ? FormTapCard
             : _startForm;
 
         // The request mailbox only exists in PAX's custom package. Writing it in
@@ -856,7 +905,7 @@ public sealed class JpxRestLink : ITerminalLink
         // set" â€” and since a batch is only OK when every command is, that made
         // an otherwise successful DisplayForm look like a failure.
         var commands = new List<object>();
-        if (!stockMode)
+        if (!stockMode && !isCard)
         {
             commands.Add(new
             {
@@ -871,7 +920,231 @@ public sealed class JpxRestLink : ITerminalLink
         // Even a cancel back to the cart form counts: the list may have been
         // reset by the form navigation in between, so rebuild on the next sync.
         InvalidateCartRender();
+
+        if (isCard)
+        {
+            lock (_tenderLock)
+            {
+                _cardTender = new CardTender(message.OrderId, message.AmountCents ?? 0, message.Currency);
+                _cardApprovedPending = false;
+            }
+            Console.WriteLine(
+                $"[JpxRestLink] bankcard tender {message.OrderId} amountCents={message.AmountCents} — arming the contactless reader");
+            // The tap screen is what the customer needs; the reader arming can
+            // still be retried from the async response path if it fails here.
+            var armed = await BeginContactlessAsync();
+            return displayed || armed;
+        }
+
         return displayed;
+    }
+
+    // ----- Bankcard: EMV contactless over PXRRS -----
+
+    /// <summary>
+    /// Arm the contactless reader for the live bankcard tender
+    /// (emvBeginContactlessTxn, PXRRS API doc p.54). The POST answers "In
+    /// progress" at once; the actual outcome arrives asynchronously on the
+    /// notify callback as a JSON object carrying commandName — see
+    /// <see cref="HandleEmvResponse"/>. Amount and the other mandatory TLVs
+    /// follow the doc's contactless request table.
+    /// </summary>
+    private async Task<bool> BeginContactlessAsync()
+    {
+        CardTender? tender;
+        int sequence;
+        lock (_tenderLock)
+        {
+            tender = _cardTender;
+            sequence = ++_emvSequence;
+        }
+        if (tender is null) return false;
+
+        var now = DateTime.Now;
+        var tlvs = new object[]
+        {
+            new { tag = "9F02", value = tender.AmountCents.ToString("D12") }, // amount, n12
+            new { tag = "9F03", value = "000000000000" },                    // cashback
+            new { tag = "9C", value = "00" },                                // purchase
+            new { tag = "9A", value = now.ToString("yyMMdd") },
+            new { tag = "9F21", value = now.ToString("HHmmss") },
+            new { tag = "5F2A", value = "0840" },                            // USD
+            new { tag = "5F36", value = "2" },                               // 2 decimals
+            new { tag = "9F41", value = sequence.ToString("D8") },           // transaction sequence
+        };
+
+        var ok = await PostAsync(
+            $"/emvBeginContactlessTxn?timeout={ContactlessTimeoutSeconds}",
+            JsonSerializer.Serialize(tlvs));
+        if (!ok)
+        {
+            // PxRetailer transiently refuses right after a form change; one
+            // short retry before giving the register a decline.
+            await Task.Delay(600);
+            ok = await PostAsync(
+                $"/emvBeginContactlessTxn?timeout={ContactlessTimeoutSeconds}",
+                JsonSerializer.Serialize(tlvs));
+        }
+
+        if (!ok)
+        {
+            Console.WriteLine("[JpxRestLink] contactless reader could not be armed");
+            FinishCardTender("DECLINED", "Card reader unavailable", showDeclined: true);
+        }
+        else
+        {
+            Console.WriteLine($"[JpxRestLink] contactless reader armed (seq {sequence}, {ContactlessTimeoutSeconds}s)");
+        }
+        return ok;
+    }
+
+    private void DisarmCardTender(string why)
+    {
+        lock (_tenderLock)
+        {
+            if (_cardTender is null) return;
+            _cardTender = null;
+        }
+        Console.WriteLine($"[JpxRestLink] bankcard tender disarmed — {why}");
+    }
+
+    /// <summary>
+    /// Resolve the live bankcard tender into a PAYMENT_RESULT for the register
+    /// and, for declines, paint the stock declined screen. No-op when no
+    /// tender is armed (late or duplicate reader responses).
+    /// </summary>
+    private void FinishCardTender(string status, string? reason, bool showDeclined)
+    {
+        CardTender? tender;
+        lock (_tenderLock)
+        {
+            tender = _cardTender;
+            _cardTender = null;
+            if (tender is not null && status == "APPROVED") _cardApprovedPending = true;
+        }
+        if (tender is null) return;
+
+        Console.WriteLine($"[JpxRestLink] bankcard {tender.OrderId}: {status}{(reason is null ? "" : $" — {reason}")}");
+
+        if (showDeclined)
+        {
+            _ = Task.Run(async () =>
+            {
+                var shown = await PostAsync(
+                    "/sendBatchCmd",
+                    JsonSerializer.Serialize(new object[] { new { commandName = "DisplayForm", formName = FormDeclined } }));
+                if (shown) _lastDisplayedForm = FormDeclined;
+                InvalidateCartRender();
+            });
+        }
+
+        MessageReceived?.Invoke(new PosMessage
+        {
+            Type = PosMessageTypes.PaymentResult,
+            OrderId = tender.OrderId,
+            AmountCents = status == "APPROVED" ? tender.AmountCents : null,
+            Currency = tender.Currency,
+            Status = status,
+            Method = "CARD",
+            Reason = reason,
+        });
+    }
+
+    /// <summary>
+    /// Asynchronous EMV command outcomes delivered to the notify callback. The
+    /// tap itself is the demo's "authorization": a clean
+    /// EMVBeginContactlessTxn result marks the sale approved and the kernel
+    /// transaction is closed with emvEndContactlessTxn (no gateway behind this
+    /// register). Reader timeouts re-arm while the tender is live so the
+    /// customer can take their time; a cancel on the terminal or a hard EMV
+    /// failure resolves the tender accordingly.
+    /// </summary>
+    private void HandleEmvResponse(string commandName, JsonElement root)
+    {
+        var resultCode = root.TryGetProperty("resultCode", out var rc) ? rc.ToString().Trim() : "";
+        var message = root.TryGetProperty("message", out var msg) ? msg.ToString() : "";
+        Console.WriteLine($"[JpxRestLink] EMV {commandName}: resultCode={resultCode} {message}");
+
+        if (!commandName.Equals("EMVBeginContactlessTxn", StringComparison.OrdinalIgnoreCase))
+        {
+            return; // emvEndContactlessTxn / detect results: informational
+        }
+
+        bool armed;
+        lock (_tenderLock) armed = _cardTender is not null;
+        if (!armed)
+        {
+            Console.WriteLine("[JpxRestLink] contactless result with no bankcard tender armed — ignored");
+            return;
+        }
+
+        switch (resultCode.ToLowerInvariant())
+        {
+            case "0":
+                if (root.TryGetProperty("tlvs", out var tlvs) && tlvs.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var tlv in tlvs.EnumerateArray())
+                    {
+                        var tag = tlv.TryGetProperty("tag", out var t) ? t.GetString() : null;
+                        if (tag is "50" or "5F20" && tlv.TryGetProperty("value", out var v))
+                        {
+                            Console.WriteLine($"[JpxRestLink]   {tag} = {HexToAscii(v.GetString())}");
+                        }
+                    }
+                }
+                // Close the kernel transaction; its own outcome is logged when it lands.
+                _ = Task.Run(() => PostAsync("/emvEndContactlessTxn", ""));
+                FinishCardTender("APPROVED", null, showDeclined: false);
+                break;
+
+            case "0x65": // tap card again
+                _ = Task.Run(async () =>
+                {
+                    await PostAsync(
+                        "/sendBatchCmd",
+                        JsonSerializer.Serialize(new object[] { new { commandName = "DisplayForm", formName = FormTapCardAgain } }));
+                    await BeginContactlessAsync();
+                });
+                break;
+
+            case "0x86": // reader timeout — keep waiting while the register is awaiting
+            case "0x8a": // still detecting
+            case "0x8b": // card already detected
+            case "0x8d": // card already swiped
+            case "0x8f": // card already tapped
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(500);
+                    await BeginContactlessAsync();
+                });
+                break;
+
+            case "0x88": // customer cancelled on the terminal
+                FinishCardTender("CANCELLED", "Cancelled on the customer terminal", showDeclined: false);
+                break;
+
+            default:
+                var emvCode = root.TryGetProperty("emvResultCode", out var ec) ? ec.ToString() : null;
+                FinishCardTender(
+                    "DECLINED",
+                    string.IsNullOrWhiteSpace(message) ? $"Card read failed ({resultCode}{(emvCode is null ? "" : $"/{emvCode}")})" : message,
+                    showDeclined: true);
+                break;
+        }
+    }
+
+    private static string HexToAscii(string? hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex) || hex.Length % 2 != 0) return hex ?? "";
+        try
+        {
+            var bytes = Convert.FromHexString(hex);
+            return Encoding.ASCII.GetString(bytes).Trim();
+        }
+        catch (FormatException)
+        {
+            return hex;
+        }
     }
 
     /// <summary>Rows as last rendered on the terminal, for the append fast path.</summary>

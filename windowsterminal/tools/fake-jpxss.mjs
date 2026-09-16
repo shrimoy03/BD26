@@ -13,13 +13,46 @@ const listItems = []; // LIST.ITEM rows as the register renders the basket
 
 const ok = (extra = {}) => JSON.stringify({ message: "OK", resultCode: "0", ...extra });
 
-function notifyAll(name, value) {
+function notifyRaw(payload, label) {
   for (const url of subscribers) {
     const req = http.request(url, { method: "POST", headers: { "Content-Type": "application/json" } });
     req.on("error", (e) => console.log("notify failed:", url, e.message));
-    req.end(JSON.stringify({ name, value }));
+    req.end(JSON.stringify(payload));
   }
-  console.log(`notify -> ${name}=${value} (${subscribers.size} subscriber(s))`);
+  console.log(`notify -> ${label} (${subscribers.size} subscriber(s))`);
+}
+
+function notifyAll(name, value) {
+  notifyRaw({ name, value }, `${name}=${value}`);
+}
+
+// Contactless reader: the register arms it (emvBeginContactlessTxn) and the
+// "customer" taps a Visa 1.5 s later. FAKE_TAP=timeout makes the first arm
+// time out (0x86) so the re-arm path is exercised; FAKE_TAP=cancel reports a
+// customer cancel (0x88).
+let tapBehaviour = process.env.FAKE_TAP ?? "tap";
+function fakeTap(tlvs) {
+  const amount = tlvs.find((t) => t.tag === "9F02")?.value;
+  console.log(`contactless armed for amount ${amount}; behaviour=${tapBehaviour}`);
+  setTimeout(() => {
+    if (tapBehaviour === "timeout") {
+      tapBehaviour = "tap"; // only the first arm times out
+      notifyRaw({ commandName: "EMVBeginContactlessTxn", resultCode: "0x86", message: "time out" }, "EMV clss timeout");
+    } else if (tapBehaviour === "cancel") {
+      notifyRaw({ commandName: "EMVBeginContactlessTxn", resultCode: "0x88", message: "user cancel" }, "EMV clss user cancel");
+    } else {
+      notifyRaw({
+        commandName: "EMVBeginContactlessTxn", resultCode: "0", message: "success",
+        tlvs: [
+          { kernelType: 0, tag: "50", value: "56495341" },            // "VISA"
+          { kernelType: 0, tag: "5F20", value: "4A20444F45" },        // "J DOE"
+          { kernelType: 0, tag: "C7", value: "7B226D61736B6564504E223A2234303030202A2A2A2A202A2A2A2A2031323334227D" },
+          { kernelType: 0, tag: "9F02", value: amount },
+          { kernelType: 0, tag: "9F27", value: "80" },
+        ],
+      }, "EMV clss tap ok");
+    }
+  }, 1500);
 }
 
 function fakeWinkPayApproves() {
@@ -55,6 +88,15 @@ function handle(pathname, params, body, res) {
       const resultItems = names.map((name) => ({ name, value: variables.get(name) ?? "" }));
       console.log("getVariable:", names.join(","));
       return res.end(ok({ resultItems }));
+    }
+    case "/emvBeginContactlessTxn": {
+      fakeTap(JSON.parse(body || "[]"));
+      return res.end(JSON.stringify({ message: "In progress", resultCode: "0" }));
+    }
+    case "/emvEndContactlessTxn": {
+      console.log("emvEndContactlessTxn");
+      setTimeout(() => notifyRaw({ commandName: "EMVEndContactlessTxn", resultCode: "0", message: "success" }, "EMV clss end ok"), 300);
+      return res.end(JSON.stringify({ message: "In progress", resultCode: "0" }));
     }
     case "/listBoxRemoveItem": {
       // No itemId -> clear the whole list (how the register rebuilds the basket).

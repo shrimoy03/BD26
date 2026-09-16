@@ -64,7 +64,15 @@ public partial class MainWindow : Window
         vm.ScanUpc("3145891313406");    // Chanel Beaute
         PressT(vm, 1);                  // checkout
         await Shot("t1-checkout-connected");
-        PressT(vm, 1);                  // Bloomingdale's Card/Pay → START_PAYMENT
+        if (Environment.GetEnvironmentVariable("POS_TERMINAL_TEST_METHOD") == "CARD")
+        {
+            PressT(vm, 7);              // more payment methods
+            PressT(vm, 2);              // bankcard → START_PAYMENT CARD (EMV tap)
+        }
+        else
+        {
+            PressT(vm, 1);              // Bloomingdale's Card/Pay → START_PAYMENT
+        }
         await Shot("t2-awaiting-terminal");
         for (var i = 0; i < 40 && vm.IsAwaitingTerminal; i++) await Task.Delay(250);
         await Shot("t3-terminal-result");
