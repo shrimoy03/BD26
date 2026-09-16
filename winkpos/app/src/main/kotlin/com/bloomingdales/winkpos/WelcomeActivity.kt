@@ -126,13 +126,25 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
      */
     private fun handleAutoBiometric(intent: android.content.Intent?) {
         val biometric = intent?.getStringExtra(PosLink.EXTRA_AUTO_BIOMETRIC) ?: return
+        val intentOrderId = intent.getStringExtra(PosLink.EXTRA_ORDER_ID)
+        val intentAmount = intent.getLongExtra(PosLink.EXTRA_AMOUNT_CENTS, 0L)
         intent.removeExtra(PosLink.EXTRA_AUTO_BIOMETRIC)
         intent.removeExtra(PosLink.EXTRA_ORDER_ID)
         intent.removeExtra(PosLink.EXTRA_AMOUNT_CENTS)
 
-        // The register amount stays in RegisterSale for the Dashboard to show.
+        // The intent is the source of truth for the sale: PosLink stamps the
+        // order into it so a cold launch through the full-screen intent (the
+        // process recreated, RegisterSale empty) or a clear() race still lands
+        // the amount. Re-seed the singleton from it — the Dashboard reads the
+        // amount from RegisterSale and its Pay button charges that figure.
+        if (!intentOrderId.isNullOrBlank() && intentAmount > 0L) {
+            PosLink.RegisterSale.set(intentOrderId, intentAmount)
+        }
         val orderId = PosLink.RegisterSale.orderId
         val amount = PosLink.RegisterSale.amountCents
+        if (amount <= 0L) {
+            Log.w(TAG, "auto check-in ($biometric) but no register amount — intent=$intentAmount, RegisterSale=$amount")
+        }
         Log.d(TAG, "auto check-in ($biometric) for register sale order=$orderId amount=$amount")
         startCheckin(biometric)
     }

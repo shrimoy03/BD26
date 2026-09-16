@@ -66,8 +66,11 @@ Build checklist, in order:
    — without it `startActivity` is silently dropped while backgrounded, which
    looks exactly like the handover failing.
 5. Leave the app running (it may sit behind PxRetailer). Confirm the link with
-   `adb logcat -s PxrrsTransport` — you want `order received:` when the register
-   sends a FACE tender.
+   `adb logcat -s PxrrsTransport PosLink WelcomeActivity`. In order you want:
+   `connected to PXRRS at https://...` (else `PXRRS unreachable — tried ...`),
+   then on a Face press `order received:`, `START_PAYMENT order=... amount=...`
+   and `auto check-in (face) for register sale ... amount=<cents>`. A zero
+   amount there means the intent extras did not carry the sale.
 
 The register side is already verified against an A3700: it publishes the order,
 raises the flag and backgrounds PxRetailer. T8 at checkout (or T7 on the opening
@@ -83,7 +86,10 @@ terminal and takes the biometric leg of the sale. Enable it in
 
 ```properties
 POS_LINK_MODE=pxrrs
-# optional; defaults to https://127.0.0.1:9090
+# optional; defaults to https://127.0.0.1:9090. If that loopback address does
+# not answer (PXRRS may bind only the interface PXR.COMM.TM.IP names), the
+# transport automatically tries the same port on this device's own Wi-Fi IP and
+# logs "PXRRS reachable at https://<ip>:9090".
 POS_LINK_PXRRS_URL=https://127.0.0.1:9090
 
 # Mailbox variables. Optional — these are the defaults, and they must match the
@@ -112,10 +118,11 @@ captures the biometric, writes the result back and raises the flag again.
 | `3` | capture claimed and in progress |
 | `2` | result published; the register settles the sale |
 
-`FireEvent` is deliberately not relied on: PXRRS accepts a notify subscription
-and then never posts to the replyURL (reproducible with `emvDetectICCard`, so
-it is not specific to custom form events). The tender button therefore carries a
-PxDesigner **SetVariable** action instead, which the register polls.
+This app does **not** call `/subscribe`. PXRRS keeps exactly one notify
+subscriber (last writer wins) and the register owns that slot — its
+`IS_TRANS_STARTED=face` delivery is what starts the sale. An earlier build
+subscribed on every reconnect and silently stole it. Nor does it write
+`BOOL.FOREGROUND` on connect: the register owns the foreground flag too.
 
 The register backgrounds PxRetailer (`BOOL.FOREGROUND=false`) when it sees the
 biometric tender, which is what lets this app take the screen. Launching an

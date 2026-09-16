@@ -26,7 +26,7 @@ import org.json.JSONObject
  * the PxRetailer REST service (PXRRS) running on this terminal, using form
  * variables as mailboxes.
  *
- *   startup -> POST /setVariable BOOL.FOREGROUND=false; POST /subscribe
+ *   startup -> probe /getPackageList (loopback, then this device's LAN IP)
  *   incoming sale  <- notify IS_TRANS_STARTED=1
  *                  -> GET /getVariable START_TRANS_REQ_DATA (register's JSON)
  *   result  -> POST /sendBatchCmd [SetVariable TRANS_RESULT=json,
@@ -44,7 +44,7 @@ import org.json.JSONObject
  * client certificate even on loopback — see buildClient.
  */
 class PxrrsTransport(
-    private val baseUrl: String,
+    configuredUrl: String,
     private val notifyPort: Int = DEFAULT_NOTIFY_PORT,
     private val context: Context? = null,
     // Mailbox variables shared with the register (windowsterminal
@@ -56,12 +56,18 @@ class PxrrsTransport(
     private val resultVar: String = "STR.TRANSACTION_RESULT",
 ) : PosLinkTransport {
 
-    private val http = buildClient(baseUrl, context)
+    /**
+     * PXRRS endpoint actually in use. Starts at the configured URL; if that is
+     * loopback and never answers, maintainLinkLoop falls back to this device's
+     * own LAN address — PXRRS may bind only the interface PXR.COMM.TM.IP names.
+     */
+    @Volatile private var baseUrl: String = configuredUrl
+    private val candidateUrls: List<String> = candidateUrlsFor(configuredUrl)
+    private val http = buildClient(configuredUrl, context)
 
     @Volatile private var listener: PosLinkTransport.Listener? = null
     @Volatile private var running = false
     @Volatile private var connected = false
-    @Volatile private var subscribed = false
     private var notifySocket: ServerSocket? = null
 
     override fun start(listener: PosLinkTransport.Listener) {
@@ -149,25 +155,32 @@ class PxrrsTransport(
 
     private fun maintainLinkLoop() {
         while (running) {
-            val alive = probe()
-
-            if (alive && !subscribed) {
-                // Both are best-effort. The sale runs through the variable
-                // mailboxes, so neither the foreground flag (absent on some
-                // packages) nor the notify subscription may gate the link —
-                // treating them as required would leave the app permanently
-                // "disconnected" and the mailbox loop would never run.
-                setVariable(VAR_FOREGROUND, "false")
-                subscribe()
-                subscribed = true
+            // Not connected: try every candidate endpoint; the first that
+            // answers becomes baseUrl. Connected: just re-probe the one in use.
+            val alive = if (connected) {
+                probe(baseUrl)
+            } else {
+                candidateUrls.firstOrNull { url -> probe(url) }?.also { url ->
+                    if (url != baseUrl) Log.i(TAG, "PXRRS reachable at $url (configured ${candidateUrls.first()})")
+                    baseUrl = url
+                } != null
             }
 
+            // Deliberately no /subscribe and no BOOL.FOREGROUND write here.
+            // PXRRS keeps a single notify subscriber (last writer wins), and
+            // the register owns that slot — its IS_TRANS_STARTED delivery is
+            // what starts the whole sale. Subscribing from this side stole it
+            // on every reconnect. The register also owns the foreground flag
+            // (true on cart sync, false on handoff, true after the result);
+            // writing false on connect hid PxRetailer's idle screen at boot.
+            // The sale itself runs entirely on the variable mailboxes.
             if (alive != connected) {
                 connected = alive
                 if (alive) {
+                    Log.i(TAG, "connected to PXRRS at $baseUrl")
                     listener?.onConnected()
                 } else {
-                    subscribed = false // re-run the init handshake on reconnect
+                    Log.w(TAG, "PXRRS unreachable — tried ${candidateUrls.joinToString()}")
                     listener?.onDisconnected()
                 }
             }
@@ -175,50 +188,6 @@ class PxrrsTransport(
         }
     }
 
-    // ----- Subscribe (Phase 1) -----
-
-    /**
-     * Shaped after PAX's working curl recipe (verified against a live A3700
-     * from the register side — Subscribe returns Success and the terminal
-     * records the replyAddress):
-     *
-     *   curl 'https://<terminal>:9090/subscribe?replyURL=<host>%3A<port>' \
-     *        --form 'fileName=@server_pci7.cert'
-     *
-     * The replyURL is bare host:port (no scheme, no path) and the callback
-     * server's certificate rides along as a multipart part named "fileName" —
-     * PXRRS needs it to authenticate the HTTPS callback before it will post
-     * anything there. The PEM is extracted from the very keystore the notify
-     * listener serves TLS with, so the two can never drift apart. With no
-     * keystore bundled this degrades to the old bare subscribe.
-     */
-    private fun subscribe(): Boolean {
-        val reply = java.net.URLEncoder.encode("127.0.0.1:$notifyPort", "UTF-8")
-        val path = "/subscribe?replyURL=$reply"
-        val pem = notifyCertPem() ?: return post(path, null)
-
-        return try {
-            val form = okhttp3.MultipartBody.Builder()
-                .setType(okhttp3.MultipartBody.FORM)
-                .addFormDataPart(
-                    "fileName",
-                    "server_pci7.cert",
-                    pem.toRequestBody("application/octet-stream".toMediaType()),
-                )
-                .build()
-            http.newCall(Request.Builder().url("$baseUrl$path").post(form).build())
-                .execute().use { response ->
-                    val text = response.body?.string().orEmpty()
-                    val ok = response.isSuccessful &&
-                        runCatching { JSONObject(text).optString("resultCode") == "0" }.getOrNull() == true
-                    Log.d(TAG, "subscribe (with callback cert) -> $text")
-                    ok
-                }
-        } catch (e: Exception) {
-            Log.w(TAG, "subscribe with certificate failed: ${e.message}")
-            post(path, null)
-        }
-    }
 
     /** The notify keystore, or null when the asset is not bundled. */
     private fun loadNotifyKeystore(): KeyStore? = try {
@@ -232,22 +201,6 @@ class PxrrsTransport(
         null
     }
 
-    /** PEM of the notify listener's certificate, for the subscribe attachment. */
-    private fun notifyCertPem(): String? = try {
-        loadNotifyKeystore()?.let { store ->
-            val alias = store.aliases().toList().firstOrNull() ?: return null
-            val der = store.getCertificate(alias)?.encoded ?: return null
-            val b64 = android.util.Base64.encodeToString(der, android.util.Base64.NO_WRAP)
-            buildString {
-                append("-----BEGIN CERTIFICATE-----\n")
-                b64.chunked(64).forEach { append(it).append('\n') }
-                append("-----END CERTIFICATE-----\n")
-            }
-        }
-    } catch (e: Exception) {
-        Log.w(TAG, "could not export notify certificate: ${e.message}")
-        null
-    }
 
     // ----- Notify listener -----
 
@@ -388,9 +341,9 @@ class PxrrsTransport(
     // ----- REST helpers -----
 
     /** PXRRS methods are POST-only; a GET just returns an empty reply. */
-    private fun probe(): Boolean = try {
+    private fun probe(url: String): Boolean = try {
         http.newCall(
-            Request.Builder().url("$baseUrl/getPackageList").post("".toRequestBody(JSON)).build(),
+            Request.Builder().url("$url/getPackageList").post("".toRequestBody(JSON)).build(),
         ).execute().use { it.isSuccessful }
     } catch (_: Exception) {
         false
@@ -443,6 +396,39 @@ class PxrrsTransport(
          */
         const val NOTIFY_CERT_ASSET = "pxrrs-notify-server.p12"
         const val NOTIFY_CERT_PASSWORD = "pax12345"
+
+        /**
+         * Endpoints to try, in order: the configured URL, then — when that is
+         * loopback — the same scheme/port on this device's own Wi-Fi/LAN IPv4.
+         * PXRRS may listen only on the interface PXR.COMM.TM.IP names, in which
+         * case https://127.0.0.1:9090 is refused while the LAN address works.
+         * buildClient trusts any certificate and hostname, so the same client
+         * serves every candidate.
+         */
+        fun candidateUrlsFor(configured: String): List<String> {
+            val out = mutableListOf(configured)
+            val uri = runCatching { java.net.URI(configured) }.getOrNull() ?: return out
+            val host = uri.host ?: return out
+            val isLoopback = runCatching { java.net.InetAddress.getByName(host).isLoopbackAddress }.getOrDefault(false)
+            if (!isLoopback) return out
+            val port = if (uri.port > 0) ":${uri.port}" else ""
+            ownLanAddresses().forEach { ip -> out += "${uri.scheme}://$ip$port" }
+            return out
+        }
+
+        /** Non-loopback IPv4 addresses of this device, Wi-Fi (wlan*) first. */
+        fun ownLanAddresses(): List<String> = try {
+            java.net.NetworkInterface.getNetworkInterfaces().toList()
+                .filter { it.isUp && !it.isLoopback }
+                .sortedBy { if (it.name.startsWith("wlan")) 0 else 1 }
+                .flatMap { nic -> nic.inetAddresses.toList().filterIsInstance<java.net.Inet4Address>() }
+                .filter { !it.isLoopbackAddress && !it.isLinkLocalAddress }
+                .map { it.hostAddress ?: "" }
+                .filter { it.isNotBlank() }
+        } catch (e: Exception) {
+            Log.w(TAG, "could not enumerate interfaces: ${e.message}")
+            emptyList()
+        }
 
         /**
          * PXRRS serves HTTPS with PAX's self-signed chain and asks for a client

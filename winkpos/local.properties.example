@@ -24,7 +24,8 @@ WINK_ENV=stage
 POS_LINK_MODE=pxrrs
 
 # PXRRS on the terminal. HTTPS with mutual TLS even over loopback, using
-# app/src/main/assets/pxrrs-integration-client.p12.
+# app/src/main/assets/pxrrs-integration-client.p12. If loopback never answers
+# the app falls back to the same port on its own Wi-Fi IP automatically.
 POS_LINK_PXRRS_URL=https://127.0.0.1:9090
 
 # Mailbox variables. These are the defaults and must match the register's
