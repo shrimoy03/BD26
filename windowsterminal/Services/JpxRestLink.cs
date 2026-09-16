@@ -148,7 +148,7 @@ public sealed class JpxRestLink : ITerminalLink
         Environment.GetEnvironmentVariable("POS_NOTIFY_SUBSCRIBE_REAL") == "1";
 
     /// <summary>Poll cycles (5s each) between re-claiming the notify callback.</summary>
-    private const int ResubscribeCycles = 12;
+    private const int ResubscribeCycles = 20; // x15s probe cadence = every 5 minutes
 
     public JpxRestLink(LinkConfig config)
     {
@@ -348,7 +348,7 @@ public sealed class JpxRestLink : ITerminalLink
         {
             try
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(_notifyHealthy ? 2000 : 400), ct);
+                await Task.Delay(TimeSpan.FromMilliseconds(2000), ct);
             }
             catch (OperationCanceledException)
             {
@@ -361,6 +361,15 @@ public sealed class JpxRestLink : ITerminalLink
             // pausing the trigger poll halves the request pressure on PXRRS
             // (which serializes) and avoids double-reading the shared variable.
             if (_resultPoll is not null) continue;
+
+            // Notify is delivering (proven) and we hold the real subscription:
+            // the Face press reaches us as IS_TRANS_STARTED=face within a second.
+            // Polling the same variable on top of that only loads PXRRS's
+            // single request queue (every GET here delays a cart update) and,
+            // worse, a poll that read "face" just before the notify arrived
+            // stamped "none" over the handoff's "1" — WinkPay never saw the
+            // order. The poll is a fallback for a dead subscription only.
+            if (_notifyHealthy && _subscribedReal && !_parkedByWatchdog) continue;
 
             // Preferred route: the button carries a PxDesigner SetVariable
             // action writing "face"/"palm" here. Unlike FireEvent this needs no
@@ -681,7 +690,7 @@ public sealed class JpxRestLink : ITerminalLink
 
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                await Task.Delay(TimeSpan.FromSeconds(15), ct);
             }
             catch (OperationCanceledException)
             {
@@ -883,6 +892,7 @@ public sealed class JpxRestLink : ITerminalLink
             StartResultPolling();
             Console.WriteLine(
                 $"[JpxRestLink] order published to {_requestVar}, {_stateVar}=1, PxRetailer backgrounded");
+            _ = Task.Run(() => VerifyHandoffAsync(handoff, message.OrderId));
             return true;
             }
             finally
@@ -1271,30 +1281,11 @@ public sealed class JpxRestLink : ITerminalLink
         var listKnownEmpty = appendOnly;
         if (!appendOnly)
         {
-            var cleared = await PostAsync("/listBoxRemoveItem", """{"listControlId":"LIST.ITEM"}""");
+            // The clear rides in the same batch as the redraw (below), the way
+            // the RetailDemoApplication does it: one PXRRS round trip instead
+            // of two, which matters when each one takes 1-3s.
             _renderedRows.Clear();
-            if (cleared)
-            {
-                _cartClearFailures = 0;
-                listKnownEmpty = true;
-            }
-            else if (++_cartClearFailures >= 3)
-            {
-                // Clearing keeps failing — most plausibly the list is already
-                // empty and this package rejects a no-op remove. Refusing to
-                // draw forever would be worse than a possible duplicate, so
-                // assume empty and carry on; a later successful clear resets.
-                Console.WriteLine(
-                    $"[JpxRestLink] listBoxRemoveItem failed {_cartClearFailures}x in a row — assuming LIST.ITEM is empty");
-                listKnownEmpty = true;
-            }
-            else
-            {
-                // Unknown list contents: update the totals below, but do not
-                // insert rows on top of what may still be there. The caller
-                // retries and the clear runs again.
-                ok = false;
-            }
+            listKnownEmpty = true;
         }
 
         var commands = new List<object>
@@ -1305,6 +1296,17 @@ public sealed class JpxRestLink : ITerminalLink
                 variables = CartVariables(message, foreground: !biometricInFlight),
             },
         };
+        if (!appendOnly)
+        {
+            // itemId 65535 = every row; PXRRS applies it silently (no per-command
+            // result in the batch reply), so an already-empty list cannot fail the sync.
+            commands.Insert(0, new
+            {
+                commandName = "listBoxRemoveItem",
+                listControlId = "LIST.ITEM",
+                listItems = new object[] { new { itemId = 65535 } },
+            });
+        }
 
         if (listKnownEmpty && rows.Count > _renderedRows.Count)
         {
@@ -1369,6 +1371,41 @@ public sealed class JpxRestLink : ITerminalLink
     private Task<bool> SetVariableAsync(string name, string value) => PostAsync(
         "/setVariable",
         JsonSerializer.Serialize(new { variables = new[] { new { name, value } } }));
+
+    /// <summary>
+    /// The published order must survive until WinkPay claims it. On the
+    /// A3700 it did not always: STR.GENERIC_1 came back empty and the flag
+    /// "none" seconds after a successful handoff (a second Face press — the
+    /// stock button clears the mailbox — or a late stamp from any poller).
+    /// Re-read at +2s and +5s and re-publish once if the sale is gone and
+    /// WinkPay has not claimed it (3) or answered (2).
+    /// </summary>
+    private async Task VerifyHandoffAsync(object[] handoff, string? orderId)
+    {
+        foreach (var delayMs in new[] { 2000, 3000 })
+        {
+            await Task.Delay(delayMs);
+            if (_resultPoll is null) return; // sale finished or cancelled meanwhile
+            string? state, order;
+            try
+            {
+                state = (await GetVariableAsync(_stateVar))?.Trim();
+                order = await GetVariableAsync(_requestVar);
+            }
+            catch (Exception) { continue; }
+
+            if (state is "3" or "2") return; // WinkPay has it
+            if (state == StateOrderReady && !string.IsNullOrWhiteSpace(order)) continue; // intact, check once more
+
+            Console.WriteLine(
+                $"[JpxRestLink] handoff for {orderId} was wiped ({_stateVar}='{state}', {_requestVar} {(string.IsNullOrWhiteSpace(order) ? "empty" : "set")}) — re-publishing");
+            if (await PostAsync("/sendBatchCmd", JsonSerializer.Serialize(handoff)))
+            {
+                _foreground = false;
+            }
+            return;
+        }
+    }
 
     private void StartResultPolling()
     {
@@ -1571,6 +1608,14 @@ public sealed class JpxRestLink : ITerminalLink
             var body = await response.Content.ReadAsStringAsync();
             var ok = response.IsSuccessStatusCode && IsResultOk(body);
             Console.WriteLine($"[JpxRestLink] subscribe (with callback cert) -> {body}");
+            // "certificate applied successfully" is PXRRS confirming it kept our
+            // cert — the one precondition delivery ever depended on (verified on
+            // the A3700). Treat the callback as live from here so the trigger
+            // poll stays off instead of loading PXRRS until the first event.
+            if (ok && body.Contains("certificate applied", StringComparison.OrdinalIgnoreCase))
+            {
+                _notifyHealthy = true;
+            }
             return ok;
         }
         catch (Exception e)
@@ -1617,9 +1662,24 @@ public sealed class JpxRestLink : ITerminalLink
             return true;
         }
 
-        await SetVariableAsync(_triggerVar, "none");
-        Console.WriteLine($"[JpxRestLink] {_triggerVar}={value} â€” starting {method} tender");
+        Console.WriteLine($"[JpxRestLink] {_triggerVar}={value} — starting {method} tender");
         RaiseTender(method, "trigger poll");
+
+        // Consume the trigger only once it is clear nobody took the sale: an
+        // accepted tender's handoff replaces "face" with "1" itself (and this
+        // is the same variable), so a stamp issued now could only ever land on
+        // that flag. Decide after the handoff would have landed.
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(6000);
+            if (_resultPoll is not null || TenderInFlight(method)) return;
+            var current = await GetVariableAsync(_triggerVar);
+            if (current?.Trim().ToUpperInvariant() is "FACE" or "PALM")
+            {
+                await SetVariableAsync(_triggerVar, "none");
+                Console.WriteLine($"[JpxRestLink] {_triggerVar} cleared — the {method} press was not turned into a sale");
+            }
+        });
         return true;
     }
 
@@ -1737,20 +1797,13 @@ public sealed class JpxRestLink : ITerminalLink
             if (_stalledCalls.Count < 2) return;
             _stalledCalls.Clear();
 
-            if (ForceRealSubscription)
-            {
-                Console.WriteLine(
-                    "[JpxRestLink] repeated ~10s stalls but POS_NOTIFY_SUBSCRIBE_REAL=1 â€” keeping the real callback; check the firewall on this PC");
-                return;
-            }
-
-            _parkedByWatchdog = true;
+            // Never park. Delivery to this callback is verified end to end on
+            // the A3700; the stalls seen here came from PxRetailer restarting
+            // on the terminal, and parking threw notify away for the session —
+            // which put the laggy trigger poll back in charge. Log and go on.
+            Console.WriteLine(
+                "[JpxRestLink] repeated ~10s stalls — PXRRS is slow or PxRetailer restarted; keeping the real callback");
         }
-
-        _notifyHealthy = false;
-        _subscribed = false; // MaintainLinkAsync re-subscribes (parked) within 5s
-        Console.WriteLine(
-            "[JpxRestLink] repeated ~10s stalls â€” our callback is poisoning PXRRS (firewall?); parking the subscription and falling back to polling for this session");
     }
 
     private async Task<string?> GetVariableAsync(string name)
