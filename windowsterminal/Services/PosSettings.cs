@@ -90,12 +90,16 @@ public sealed class PosSettings
     /// PAX's own RetailDemoApplication subscribes with an https replyURL, and
     /// PXRRS appears not to deliver to a plain-http one.
     /// </summary>
-    // Plain HTTP by default: PAX's own ECR test tool receives FireEvent
-    // notifies over an http replyURL with no certificate, while an https+cert
-    // subscription has never received one here — and every failed delivery
-    // attempt stalls PXRRS's whole request queue ~10s, which read as the
-    // register randomly turning sluggish mid-demo.
-    public bool NotifyUseTls { get; set; }
+    // HTTPS by default. Measured on the live A3700 (2026-09-16, same terminal,
+    // same session, ten minutes apart): subscribed with a plain-http replyURL,
+    // PXRRS accepted the subscription and then never opened a single TCP
+    // connection to the callback — the async EMV results (and a 2s
+    // emvDetectICCard probe) simply vanished while PXRRS stalled ~10s per
+    // attempt. Re-subscribed with the https replyURL plus the bundled server
+    // certificate ("certificate applied successfully"), the same probe landed
+    // within 3s and the contactless tap approved end to end. Turning this off
+    // makes every tap look like "nothing happens".
+    public bool NotifyUseTls { get; set; } = true;
 
     /// <summary>Blank = the bundled <c>certs/pxrrs-notify-server.p12</c>.</summary>
     public string NotifyCertPath { get; set; } = "";

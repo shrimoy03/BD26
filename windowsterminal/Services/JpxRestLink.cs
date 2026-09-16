@@ -916,7 +916,13 @@ public sealed class JpxRestLink : ITerminalLink
         if (message.Type == PosMessageTypes.CancelPayment)
         {
             StopResultPolling();
-            DisarmCardTender("cancelled by the register");
+            if (DisarmCardTender("cancelled by the register"))
+            {
+                // The reader is still waiting for a tap from the arm we just
+                // abandoned; release it so the next tender's arm is not
+                // refused with "card already detected"/"detecting card".
+                await ReleaseContactlessAsync("cancel");
+            }
             await SetForegroundAsync(true);
         }
 
@@ -948,21 +954,24 @@ public sealed class JpxRestLink : ITerminalLink
 
         if (isCard)
         {
-            // Same batch shape as the RetailDemoApplication: prompt text and amount
-            // for SwipeScreen, then start card detection so insert and swipe work
-            // alongside the contactless read armed in BeginContactlessAsync.
+            // Prompt text and amount for the stock SwipeScreen. The tap itself
+            // is read by emvBeginContactlessTxn (BeginContactlessAsync below).
+            // Do NOT add EMVDetectICCard here: on the live A3700 it claims the
+            // card interfaces for contact/MSR detection, the contactless arm
+            // then never gets the tap (seen 2026-09-16: tap -> nothing, stuck on
+            // the swipe prompt), and its own detect result is not a payment.
+            // PXRRS runs one card session at a time — tap is the demo's path.
             commands.Add(new
             {
                 commandName = "SetVariable",
                 variables = new object[]
                 {
-                    new { name = "STR.SWIPE", value = "Please Insert, Swipe, or Tap Card" },
+                    new { name = "STR.SWIPE", value = "Please Tap Card" },
                     new { name = "STR.AMOUNTOK", value = "$" + ((message.AmountCents ?? 0) / 100m).ToString("N2") },
                 },
             });
         }
         commands.Add(new { commandName = "DisplayForm", formName = form });
-        if (isCard) commands.Add(new { commandName = "EMVDetectICCard" });
         var displayed = await PostAsync("/sendBatchCmd", JsonSerializer.Serialize(commands));
         if (displayed) _lastDisplayedForm = form;
         // Even a cancel back to the cart form counts: the list may have been
@@ -978,6 +987,10 @@ public sealed class JpxRestLink : ITerminalLink
             }
             Console.WriteLine(
                 $"[JpxRestLink] bankcard tender {message.OrderId} amountCents={message.AmountCents} — arming the contactless reader");
+            // Finish whatever contactless session a previous tender left open
+            // (abandoned arm, cancel, crash) before claiming the reader again —
+            // PAX's own pre-transaction batch does the same (API doc example 3).
+            await ReleaseContactlessAsync("new tender");
             // The tap screen is what the customer needs; the reader arming can
             // still be retried from the async response path if it fails here.
             var armed = await BeginContactlessAsync();
@@ -1026,9 +1039,11 @@ public sealed class JpxRestLink : ITerminalLink
             JsonSerializer.Serialize(tlvs));
         if (!ok)
         {
-            // PxRetailer transiently refuses right after a form change; one
-            // short retry before giving the register a decline.
+            // PxRetailer transiently refuses right after a form change, or a
+            // stale session is still holding the reader; release it and retry
+            // once before giving the register a decline.
             await Task.Delay(600);
+            await ReleaseContactlessAsync("arm refused");
             ok = await PostAsync(
                 $"/emvBeginContactlessTxn?timeout={ContactlessTimeoutSeconds}",
                 JsonSerializer.Serialize(tlvs));
@@ -1046,14 +1061,28 @@ public sealed class JpxRestLink : ITerminalLink
         return ok;
     }
 
-    private void DisarmCardTender(string why)
+    /// <summary>Forget the live bankcard tender; true if there was one.</summary>
+    private bool DisarmCardTender(string why)
     {
         lock (_tenderLock)
         {
-            if (_cardTender is null) return;
+            if (_cardTender is null) return false;
             _cardTender = null;
         }
         Console.WriteLine($"[JpxRestLink] bankcard tender disarmed — {why}");
+        return true;
+    }
+
+    /// <summary>
+    /// emvReleaseContactlessService: "release the contactless service and
+    /// finish the transaction so that new transactions can be performed"
+    /// (PXRRS API doc). Synchronous; a failure only means there was nothing
+    /// to release, so the outcome is logged and otherwise ignored.
+    /// </summary>
+    private async Task ReleaseContactlessAsync(string why)
+    {
+        var released = await PostAsync("/emvReleaseContactlessService", null);
+        Console.WriteLine($"[JpxRestLink] contactless service release ({why}) ok={released}");
     }
 
     /// <summary>

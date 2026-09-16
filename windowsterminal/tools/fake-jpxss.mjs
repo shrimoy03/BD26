@@ -93,6 +93,10 @@ function handle(pathname, params, body, res) {
       fakeTap(JSON.parse(body || "[]"));
       return res.end(JSON.stringify({ message: "In progress", resultCode: "0" }));
     }
+    case "/emvReleaseContactlessService": {
+      console.log("emvReleaseContactlessService");
+      return res.end(ok({ message: "EMVReleaseContactlessService Released" }));
+    }
     case "/emvEndContactlessTxn": {
       console.log("emvEndContactlessTxn");
       setTimeout(() => notifyRaw({ commandName: "EMVEndContactlessTxn", resultCode: "0", message: "success" }, "EMV clss end ok"), 300);

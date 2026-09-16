@@ -76,9 +76,13 @@ Behavior on the register:
   `START_PAYMENT` with `method: BD_LOYALLIST` — the PxRetailer payment-options
   page where the customer can pick face/palm (WinkPay). **T2 Bankcard** sends
   `method: CARD`: in `jpxss` mode the register shows PxRetailer's stock
-  `CLSSTapCard` screen and arms the contactless reader itself over PXRRS
-  (`emvBeginContactlessTxn`, mandatory TLVs 9F02/9F03/9C/9A/9F21/5F2A/5F36/9F41,
-  45 s timeout, re-armed while the tender is live). The reader's asynchronous
+  `SwipeScreen` (prompt "Please Tap Card" + amount), releases any stale
+  contactless session (`emvReleaseContactlessService`) and arms the contactless
+  reader itself over PXRRS (`emvBeginContactlessTxn`, mandatory TLVs
+  9F02/9F03/9C/9A/9F21/5F2A/5F36/9F41, 45 s timeout, re-armed while the tender
+  is live). Do not add `EMVDetectICCard` to that batch: PXRRS runs one card
+  session at a time, and with contact detection active the tap never reaches
+  the contactless arm (live A3700, 2026-09-16). The reader's asynchronous
   result lands on the notify callback as a JSON object with `commandName`; a
   clean result is the demo's authorization — the sale completes as "Bankcard",
   `emvEndContactlessTxn` closes the kernel transaction and SHOW_THANKS paints
