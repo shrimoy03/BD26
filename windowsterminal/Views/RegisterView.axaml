@@ -483,15 +483,44 @@
             </Grid>
         </Border>
 
-        <!-- ===== Busy overlay: blocks input while a terminal command is out ===== -->
-        <Border Grid.Row="0" Grid.RowSpan="4" IsVisible="{Binding IsBusy}"
-                Background="#3A000000">
-            <Border Background="#F2DCB4" BorderBrush="#8A8064" BorderThickness="1"
-                    Padding="46,20" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
-                    <ProgressBar IsIndeterminate="True" Width="130" Height="7"
-                                 Foreground="#8A1E27" Background="#E0D2B0" />
-                    <TextBlock Text="{Binding BusyText}" FontSize="17" FontWeight="Bold" />
+        <!-- ===== Busy overlay: blocks the whole register while a terminal command is out.
+             Dim the register hard, put a large animated ring dead centre and the caption
+             under it, so a multi-second reset (cancel, tender) is unmistakably "working". ===== -->
+        <Border Grid.Row="0" Grid.RowSpan="4" IsVisible="{Binding IsBusy}" ZIndex="100"
+                Background="#B3000000">
+            <Border Background="#F7EBD0" BorderBrush="#8A8064" BorderThickness="1" CornerRadius="14"
+                    Padding="56,40" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    BoxShadow="0 18 44 0 #99000000">
+                <StackPanel Spacing="26" HorizontalAlignment="Center">
+                    <Panel Width="104" Height="104" HorizontalAlignment="Center">
+                        <!-- track -->
+                        <Ellipse Width="104" Height="104" Stroke="#E0D2B0" StrokeThickness="9" />
+                        <!-- spinning arc -->
+                        <Arc Width="104" Height="104" StartAngle="0" SweepAngle="270"
+                             Stroke="#8A1E27" StrokeThickness="9" StrokeLineCap="Round">
+                            <Arc.RenderTransform>
+                                <RotateTransform Angle="0" />
+                            </Arc.RenderTransform>
+                            <Arc.Styles>
+                                <Style Selector="Arc">
+                                    <Style.Animations>
+                                        <Animation Duration="0:0:0.9" IterationCount="INFINITE">
+                                            <KeyFrame Cue="0%">
+                                                <Setter Property="RotateTransform.Angle" Value="0" />
+                                            </KeyFrame>
+                                            <KeyFrame Cue="100%">
+                                                <Setter Property="RotateTransform.Angle" Value="360" />
+                                            </KeyFrame>
+                                        </Animation>
+                                    </Style.Animations>
+                                </Style>
+                            </Arc.Styles>
+                        </Arc>
+                    </Panel>
+                    <TextBlock Text="{Binding BusyText}" FontSize="24" FontWeight="Bold"
+                               HorizontalAlignment="Center" TextAlignment="Center" />
+                    <TextBlock Text="Updating the customer terminal" FontSize="14"
+                               Foreground="#6B6250" HorizontalAlignment="Center" />
                 </StackPanel>
             </Border>
         </Border>
