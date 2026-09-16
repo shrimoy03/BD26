@@ -89,7 +89,7 @@ object PosLink {
             // so the default is https:// and the transport needs a Context to
             // read the bundled keystore out of assets.
             "pxrrs" -> PxrrsTransport(
-                BuildConfig.POS_LINK_PXRRS_URL.ifBlank { "https://127.0.0.1:9090" },
+                BuildConfig.POS_LINK_PXRRS_URL.ifBlank { PxrrsTransport.DEFAULT_URL },
                 context = context.applicationContext,
                 requestVar = BuildConfig.POS_REQUEST_VAR.ifBlank { "STR.GENERIC_1" },
                 stateVar = BuildConfig.POS_STATE_VAR.ifBlank { "STR.GENERIC_2" },
@@ -115,6 +115,20 @@ object PosLink {
 
     fun addListener(listener: Listener) = listeners.add(listener).let { }
     fun removeListener(listener: Listener) = listeners.remove(listener).let { }
+
+    /**
+     * Give the display back to PxRetailer. Used when the customer backs out of
+     * a register-driven scan from the failure popup: the sale is reported as
+     * CANCELLED over the link, but that alone leaves this app's idle page on
+     * top of the terminal until the register's next screen command. The
+     * PXRRS transport already flips the flag as part of sending a result, so
+     * this only has work to do on the other transports.
+     */
+    fun returnToRetailer() {
+        if (transport is PxrrsTransport) return
+        val ctx = appContext ?: return
+        PxrrsTransport.handScreenBackToRetailer(ctx, BuildConfig.POS_LINK_PXRRS_URL)
+    }
 
     /** Report the outcome of the pending register sale and clear it. */
     fun sendResult(

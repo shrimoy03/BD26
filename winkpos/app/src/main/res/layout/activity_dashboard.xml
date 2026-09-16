@@ -204,17 +204,6 @@
                             android:layout_marginTop="6dp"
                             android:text="@string/redeem" />
                     </LinearLayout>
-
-                    <!-- Flexible: shrinks on narrow panels instead of
-                         squeezing the text into vertical wrap. -->
-                    <ImageView
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_marginStart="4dp"
-                        android:layout_weight="1"
-                        android:contentDescription="@string/rewards"
-                        android:scaleType="fitCenter"
-                        android:src="@drawable/rewards_dog" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -269,7 +258,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
                         android:gravity="center"
-                        android:text="@string/offer_ends"
+                        android:text="@string/offer1_ends"
                         android:textColor="@color/text_grey"
                         android:textSize="8sp" />
                 </LinearLayout>
@@ -317,7 +306,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
                         android:gravity="center"
-                        android:text="@string/offer_ends"
+                        android:text="@string/offer2_ends"
                         android:textColor="@color/text_grey"
                         android:textSize="8sp" />
                 </LinearLayout>
@@ -365,7 +354,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
                         android:gravity="center"
-                        android:text="@string/offer_ends"
+                        android:text="@string/offer3_ends"
                         android:textColor="@color/text_grey"
                         android:textSize="8sp" />
                 </LinearLayout>

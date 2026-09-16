@@ -95,6 +95,9 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
             hideRetryPanel()
             // Tells the register; it returns to checkout with the sale intact.
             PosLink.sendResult(com.bloomingdales.winkpos.link.PosMessage.STATUS_CANCELLED)
+            // And put PxRetailer back on the terminal screen right away rather
+            // than leaving the customer on this app's idle page.
+            PosLink.returnToRetailer()
         }
 
         if (BuildConfig.WINK_CLIENT_ID.isBlank() || BuildConfig.WINK_MERCHANT_CLIENT_SECRET.isBlank()) {

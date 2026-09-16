@@ -379,13 +379,14 @@ class PxrrsTransport(
         null
     }
 
-    private companion object {
+    companion object {
         const val TAG = "PxrrsTransport"
         const val DEFAULT_NOTIFY_PORT = 8484
         const val POLL_MS = 5_000L
         val JSON = "application/json; charset=utf-8".toMediaType()
 
         /** PKCS#12 in assets/, derived from the PAX bundle's integrationCustomer.jks. */
+        const val DEFAULT_URL = "https://127.0.0.1:9090"
         const val CLIENT_CERT_ASSET = "pxrrs-integration-client.p12"
         const val CLIENT_CERT_PASSWORD = "pax12345"
 
@@ -428,6 +429,43 @@ class PxrrsTransport(
         } catch (e: Exception) {
             Log.w(TAG, "could not enumerate interfaces: ${e.message}")
             emptyList()
+        }
+
+        /**
+         * Put PxRetailer back on the display from outside a live PXRRS link —
+         * the failure popup's Cancel in ws mode. The register also re-asserts
+         * the flag when it hears CANCELLED, but that depends on the Wi-Fi hop
+         * and its own cart sync; PXRRS is on this very terminal, so ask it
+         * directly too. Best effort, off the main thread; tries the configured
+         * URL then this device's LAN address like maintainLinkLoop does.
+         */
+        fun handScreenBackToRetailer(context: Context, configuredUrl: String) {
+            val base = configuredUrl.ifBlank { DEFAULT_URL }.trimEnd('/')
+            Thread({
+                val client = buildClient(base, context)
+                val body = JSONObject().put(
+                    "variables",
+                    JSONArray().put(JSONObject().put("name", VAR_FOREGROUND).put("value", "true")),
+                ).toString().toRequestBody(JSON)
+                for (url in candidateUrlsFor(base)) {
+                    val ok = try {
+                        client.newCall(Request.Builder().url("$url/setVariable").post(body).build())
+                            .execute().use { response ->
+                                val text = response.body?.string().orEmpty()
+                                response.isSuccessful &&
+                                    runCatching { JSONObject(text).optString("resultCode") == "0" }.getOrDefault(false)
+                            }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "hand-back via $url failed: ${e.message}")
+                        false
+                    }
+                    if (ok) {
+                        Log.d(TAG, "$VAR_FOREGROUND=true via $url — PxRetailer back on screen")
+                        return@Thread
+                    }
+                }
+                Log.w(TAG, "could not hand the screen back to PxRetailer (tried ${candidateUrlsFor(base)})")
+            }, "pxrrs-handback").start()
         }
 
         /**

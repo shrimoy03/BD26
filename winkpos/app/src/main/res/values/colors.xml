@@ -4,7 +4,8 @@
     <color name="white">#FFFFFF</color>
     <color name="page_grey">#EDEDED</color>
     <color name="panel_grey">#F5F5F5</color>
-    <color name="loyallist_purple">#5C2D91</color>
+    <!-- Bloomingdale's Loyallist purple: PANTONE 2368 C -->
+    <color name="loyallist_purple">#4D49BE</color>
     <color name="text_dark">#141414</color>
     <color name="text_grey">#6E6E6E</color>
     <color name="border_grey">#E2E2E2</color>
