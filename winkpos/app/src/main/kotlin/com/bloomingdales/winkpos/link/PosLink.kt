@@ -187,7 +187,11 @@ object PosLink {
                 }
             }
             PosMessage.TYPE_CANCEL_PAYMENT -> {
-                if (message.orderId != null && message.orderId != RegisterSale.orderId) return
+                if (message.orderId != null && message.orderId != RegisterSale.orderId) {
+                    Log.d(TAG, "CANCEL_PAYMENT for ${message.orderId} ignored — pending sale is ${RegisterSale.orderId}")
+                    return
+                }
+                Log.d(TAG, "CANCEL_PAYMENT order=${message.orderId} — ${listeners.size} listener(s)")
                 RegisterSale.clear()
                 lastLaunchOrderId = null // a cancelled order may legitimately retry
                 listeners.forEach { it.onCancelPayment(message.orderId) }

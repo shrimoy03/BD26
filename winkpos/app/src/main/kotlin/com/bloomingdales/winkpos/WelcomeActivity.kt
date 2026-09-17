@@ -3,6 +3,8 @@ package com.bloomingdales.winkpos
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.view.View
@@ -33,6 +35,26 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
     private var checkinInFlight = false
     private var showingRegisterPrompt = false
     private var lastBiometricType = "face"
+
+    /**
+     * True from startCheckin until the SDK reports back (success, cancel or
+     * failure). Unlike checkinInFlight it is NOT reset by onResume: while the
+     * SDK's capture activity is on top this activity is stopped, and a
+     * register cancel or a second launch must still know the camera is held.
+     */
+    private var captureOpen = false
+
+    /** A launch that arrived while a capture was still open; started once it lets go. */
+    private var pendingBiometric: String? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private val startPendingCapture = Runnable {
+        val next = pendingBiometric ?: return@Runnable
+        pendingBiometric = null
+        captureOpen = false
+        checkinInFlight = false
+        Log.d(TAG, "previous capture released — starting the queued $next check-in")
+        startCheckin(next)
+    }
 
     private val cameraPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -106,7 +128,19 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
         }
 
         ensureCameraPermission()
+        // Listen for the whole lifetime, not just while resumed: the SDK's
+        // capture activity sits on top of this one during a scan, and the
+        // register's CANCEL_PAYMENT has to reach cancelCaptureIfOpen() then —
+        // registering in onResume left the camera running after every cancel,
+        // and the next launch then failed at "initializing camera".
+        PosLink.addListener(this)
         handleAutoBiometric(intent)
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacks(startPendingCapture)
+        PosLink.removeListener(this)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
@@ -158,13 +192,7 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
         // Activity briefly resumes between the SDK finishing and the
         // Dashboard starting, and must not wipe the just-populated session.
         checkinInFlight = false
-        PosLink.addListener(this)
         renderRegisterSale()
-    }
-
-    override fun onPause() {
-        super.onPause()
-        PosLink.removeListener(this)
     }
 
     // ----- Register link (merchant POS via Wi-Fi or USB/JPxSerialServer) -----
@@ -175,9 +203,28 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
     }
 
     override fun onCancelPayment(orderId: String?) {
-        if (checkinInFlight) winkPay.cancelPayment()
+        pendingBiometric = null
+        handler.removeCallbacks(startPendingCapture)
+        cancelCaptureIfOpen("register cancelled the sale")
         hideRetryPanel()
         renderRegisterSale()
+    }
+
+    /**
+     * Tear down an in-flight SDK capture so it releases the camera. The SDK
+     * answers through onCancelled (not always — see startPendingCapture's
+     * timer fallback), which is where captureOpen is cleared.
+     */
+    private fun cancelCaptureIfOpen(why: String): Boolean {
+        if (!captureOpen) return false
+        Log.d(TAG, "cancelling the open capture — $why")
+        try {
+            winkPay.cancelPayment()
+        } catch (e: Exception) {
+            Log.w(TAG, "cancelPayment failed: ${e.message}")
+        }
+        checkinInFlight = false
+        return true
     }
 
     /**
@@ -219,6 +266,19 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
     }
 
     private fun startCheckin(biometricType: String) {
+        // A previous capture still owns the camera (cancelled by the register
+        // while its activity was on top, or abandoned). Starting a second one
+        // over it stalls at "initializing camera" and fails. Cancel it and
+        // start this one once it reports back — or after a short grace period
+        // if the SDK never does.
+        if (captureOpen) {
+            Log.d(TAG, "capture still open — cancelling it before the $biometricType check-in")
+            pendingBiometric = biometricType
+            cancelCaptureIfOpen("superseded by a new launch")
+            handler.removeCallbacks(startPendingCapture)
+            handler.postDelayed(startPendingCapture, CAPTURE_RELEASE_GRACE_MS)
+            return
+        }
         if (checkinInFlight) return
         lastBiometricType = biometricType
         hideRetryPanel()
@@ -229,6 +289,7 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
             return
         }
         checkinInFlight = true
+        captureOpen = true
         statusText.visibility = View.INVISIBLE
 
         val tuning = Tuning.load(this)
@@ -253,6 +314,7 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
         winkPay.startCheckin(request, object : EmbeddedPaymentCallback {
             override fun onCheckinSuccess(result: EmbeddedCheckinResult) {
                 checkinInFlight = false
+                captureOpen = false
                 try {
                     CheckinSession.populate(
                         winkTag = result.winkTag,
@@ -274,6 +336,14 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
 
             override fun onCancelled(requestId: String) {
                 checkinInFlight = false
+                captureOpen = false
+                if (pendingBiometric != null) {
+                    // Cancelled to make room for a newer launch: start it now
+                    // rather than waiting out the grace timer.
+                    handler.removeCallbacks(startPendingCapture)
+                    startPendingCapture.run()
+                    return
+                }
                 if (PosLink.RegisterSale.isPending) {
                     showRetryPanel(getString(R.string.scan_cancelled_message))
                 }
@@ -281,6 +351,7 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
 
             override fun onFailure(error: EmbeddedPaymentError) {
                 checkinInFlight = false
+                captureOpen = false
                 val message = getString(
                     R.string.checkin_failed,
                     error.errorMessage.ifBlank { error.errorCode },
@@ -316,5 +387,8 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
 
     private companion object {
         const val TAG = "WelcomeActivity"
+
+        /** How long to wait for a cancelled capture to report back before starting the next one anyway. */
+        const val CAPTURE_RELEASE_GRACE_MS = 1_500L
     }
 }

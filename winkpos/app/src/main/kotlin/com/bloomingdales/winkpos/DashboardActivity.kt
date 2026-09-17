@@ -67,6 +67,13 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
     /** Register-driven sale mode: the merchant POS owns the amount. */
     private val registerMode: Boolean get() = PosLink.RegisterSale.isPending
 
+    /**
+     * Whether this screen was opened for a register sale. registerMode itself
+     * flips to false the moment PosLink clears the sale on CANCEL_PAYMENT, so
+     * the cancel handler needs the value from when the screen came up.
+     */
+    private var openedForRegisterSale = false
+
     private val subtotalCents: Int get() = cart.sumOf { it.priceCents }
     private val rewardCents: Int get() = if (rewardApplied && subtotalCents > 0) 1_000 else 0
     private val taxCents: Int get() = Math.round((subtotalCents - rewardCents) * TAX_RATE).toInt()
@@ -81,6 +88,7 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_dashboard)
         enterKioskMode()
+        openedForRegisterSale = registerMode
 
         itemsContainer = findViewById(R.id.itemsContainer)
         emptyCartHint = findViewById(R.id.emptyCartHint)
@@ -221,6 +229,15 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
 
     override fun onCancelPayment(orderId: String?) {
         toast(getString(R.string.register_sale_cancelled))
+        // The register voided the sale this screen was opened for: leave it,
+        // rather than falling back to the standalone demo cart with a live
+        // Pay button. Once the charge is already on its way to Wink the
+        // cancel is too late — let the payment finish and report back.
+        if (openedForRegisterSale && !paying) {
+            CheckinSession.clear()
+            finish()
+            return
+        }
         renderItems()
         renderTotals()
     }
