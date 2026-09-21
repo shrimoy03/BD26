@@ -240,11 +240,15 @@ the demo down unless the terminal is prepared:
    adb shell dumpsys activity settings | grep use_freezer   # expect use_freezer=false
    ```
 
-   If PXRRS ever has to be restarted by hand, start its boot service rather
-   than tapping the icon, so it comes up as a foreground service:
+   If PXRRS ever has to be restarted by hand, bring the process up first and
+   then start its boot service inside it — the service alone cannot be started
+   from the shell into a dead process (the command reports success and nothing
+   happens), and the activity alone leaves it a freezer candidate:
 
    ```bash
+   adb shell am start -W -n com.pax.multilane.pxretailerrestservice/com.pax.multilane.pxrestservice.ws.MainActivity
    adb shell am startservice -n com.pax.multilane.pxretailerrestservice/com.pax.multilane.pxrestservice.ws.BootUpService
+   # then put PxRetailer back on screen: setVariable BOOL.FOREGROUND=true (the register does this on connect)
    ```
 
    Rebooting the terminal achieves the same.
@@ -258,6 +262,7 @@ the demo down unless the terminal is prepared:
 
    ```bash
    adb shell am force-stop com.pax.multilane.pxretailerrestservice
+   adb shell am start -W -n com.pax.multilane.pxretailerrestservice/com.pax.multilane.pxrestservice.ws.MainActivity
    adb shell am startservice -n com.pax.multilane.pxretailerrestservice/com.pax.multilane.pxrestservice.ws.BootUpService
    ```
 
