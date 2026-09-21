@@ -91,6 +91,11 @@ public partial class MainViewModel : ViewModelBase
                 Status = "Customer terminal disconnected";
             });
             _link.MessageReceived += m => OnUiThread(() => HandleTerminalMessage(m));
+            LinkHealth.Changed += verdict => OnUiThread(() =>
+            {
+                TerminalHealth = verdict ?? "";
+                if (verdict is not null) Status = "Terminal: " + verdict;
+            });
 
             // The link starts before this view model exists, and a fast
             // terminal (or the local fake) reports connected before the
@@ -173,6 +178,17 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OnlineLabel))]
     public partial bool IsTerminalConnected { get; set; }
+
+    /// <summary>
+    /// Why the terminal link is failing, in the operator's words (frozen PXRRS,
+    /// PXRRS not running, Wi-Fi), or empty when healthy. Fed by the transport's
+    /// failure diagnosis so a 10–30s stall is explained instead of endured.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasTerminalHealthWarning))]
+    public partial string TerminalHealth { get; set; } = "";
+
+    public bool HasTerminalHealthWarning => TerminalHealth.Length > 0;
 
     [ObservableProperty]
     public partial bool IsAwaitingTerminal { get; set; }

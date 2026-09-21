@@ -198,6 +198,55 @@ today:
 | `notify IS_TRANS_STARTED=1` | `PAYMENTSTATUS` = `face`/`palm`/`card`, fired by the form's own tender buttons |
 | `notify IS_TRANS_STARTED=2` then `getVariable TRANS_RESULT` | register polls `STR.TRANSACTION_RESULT`, which winkpos writes |
 
+### Provisioning a PAX terminal (do this once per unit)
+
+PXRRS is a plain Android app, and two Android behaviours will silently take
+the demo down unless the terminal is prepared:
+
+1. **Android's cached-app freezer suspends PXRRS.** When PXRRS is started at
+   boot it runs a foreground service and is never frozen. When it is opened
+   from its launcher icon (after a force-stop or a crash) only its activity
+   runs; the moment PxRetailer comes back in front the process is "cached" and
+   Android freezes it about 10 s later. A frozen PXRRS still accepts TCP
+   connections into the kernel backlog and never answers them, so every
+   register call hangs for the full timeout and the status bar reports
+   "PXRRS on the terminal is frozen or hung". Disable the freezer for good
+   (survives reboot):
+
+   ```bash
+   adb shell settings put global cached_apps_freezer disabled
+   adb shell device_config put activity_manager_native_boot use_freezer false
+   adb shell device_config set_sync_disabled_for_tests persistent
+   adb shell dumpsys activity settings | grep use_freezer   # expect use_freezer=false
+   ```
+
+   If PXRRS ever has to be restarted by hand, start its boot service rather
+   than tapping the icon, so it comes up as a foreground service:
+
+   ```bash
+   adb shell am startservice -n com.pax.multilane.pxretailerrestservice/com.pax.multilane.pxrestservice.ws.BootUpService
+   ```
+
+   Rebooting the terminal achieves the same.
+
+2. **PXRRS's file logger fails on every write** on Android 14 (it targets the
+   Android 12 storage rules and cannot create files under `/sdcard/Logger`),
+   printing a stack trace per attempt — about 33 per REST call plus a steady
+   trickle. Over hours the process ages into multi-second latency. There is no
+   shell-side fix (no root, permission not requested); reported to PAX.
+   Reset when the register's SLOW warnings pile up:
+
+   ```bash
+   adb shell am force-stop com.pax.multilane.pxretailerrestservice
+   adb shell am startservice -n com.pax.multilane.pxretailerrestservice/com.pax.multilane.pxrestservice.ws.BootUpService
+   ```
+
+   The register's subscription survives a PXRRS restart.
+
+The register writes a daily log to `%APPDATA%\MerchantTerminal\logs\` (macOS:
+`~/Library/Application Support/MerchantTerminal/logs/`); every failed terminal
+call is followed by a `DIAGNOSIS` line naming which of these it was.
+
 Two things to know about PXRRS itself, both learned the hard way:
 
 - **The `replyURL` must be `https://`.** Notifications are not delivered to a

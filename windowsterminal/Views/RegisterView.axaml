@@ -466,7 +466,15 @@
                 <TextBlock Grid.Column="1" Text="Open" FontSize="12" VerticalAlignment="Center"
                            Margin="0,0,40,0" />
                 <TextBlock Grid.Column="2" Text="{Binding Status}" FontSize="12"
-                           VerticalAlignment="Center" HorizontalAlignment="Center" />
+                           VerticalAlignment="Center" HorizontalAlignment="Center"
+                           Classes.warning="{Binding HasTerminalHealthWarning}">
+                    <TextBlock.Styles>
+                        <Style Selector="TextBlock.warning">
+                            <Setter Property="Foreground" Value="#A31515" />
+                            <Setter Property="FontWeight" Value="Bold" />
+                        </Style>
+                    </TextBlock.Styles>
+                </TextBlock>
                 <TextBlock Grid.Column="3" Text="Normal" FontSize="12" VerticalAlignment="Center"
                            Margin="0,0,40,0" />
                 <StackPanel Grid.Column="4" Margin="0,0,32,0" HorizontalAlignment="Center">

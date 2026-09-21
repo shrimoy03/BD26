@@ -169,7 +169,7 @@ public sealed class JpxRestLink : ITerminalLink
         // 10s was not enough: the A3700 regularly takes longer than that on
         // setVariable and the listBox calls, and a timed-out handover leaves the
         // sale half-published.
-        _http = new HttpClient(BuildHandler(config)) { Timeout = TimeSpan.FromSeconds(30) };
+        _http = new HttpClient(BuildHandler(config)) { Timeout = TimeSpan.FromSeconds(12) };
         // Fresh connection per request. PXRRS's embedded NanoHTTPD reaps idle
         // keep-alive sockets on its own ~10s timer; reusing a pooled connection
         // it is concurrently abandoning hangs the request for exactly that
@@ -1806,16 +1806,95 @@ public sealed class JpxRestLink : ITerminalLink
             var body = await response.Content.ReadAsStringAsync();
             var ok = response.IsSuccessStatusCode && IsResultOk(body);
             if (!ok) Console.WriteLine($"[JpxRestLink] POST {path} -> {body}");
+            LinkHealth.Report(null);
             return ok;
+        }
+        catch (ObjectDisposedException)
+        {
+            // Setup screen re-applied settings while this call was in flight;
+            // the replacement link takes over.
+            return false;
         }
         catch (Exception e)
         {
             Console.WriteLine($"[JpxRestLink] POST {path} failed: {e.Message}");
+            _ = Task.Run(() => DiagnoseFailureAsync(path, e));
             return false;
         }
         finally
         {
             NoteLatency("POST " + path, started);
+        }
+    }
+
+    private long _lastDiagnosisTick;
+
+    /// <summary>
+    /// A PXRRS call failed: say WHY on the status bar, not just that it did.
+    /// The failures seen in the field have distinct transport signatures:
+    ///   - TCP connect refused           -> PXRRS is not running on the terminal
+    ///   - TCP connect times out, host    -> PXRRS is frozen: Android's cached-app
+    ///     answers ping                     freezer stopped its process (seen on
+    ///                                      the A380 27s after PXRRS was opened
+    ///                                      from its icon rather than at boot)
+    ///   - connect OK, no HTTP answer     -> PXRRS is running but its queue is
+    ///                                      stuck (aged logger loop / PxRetailer)
+    ///   - host does not answer at all    -> Wi-Fi / wrong IP
+    /// Rate-limited: one diagnosis per 10s, the failures come in bursts.
+    /// </summary>
+    private async Task DiagnoseFailureAsync(string path, Exception e)
+    {
+        var now = Environment.TickCount64;
+        if (now - Interlocked.Exchange(ref _lastDiagnosisTick, now) < 10_000) return;
+
+        var uri = new Uri(_baseUrl);
+        string verdict;
+        try
+        {
+            using var tcp = new System.Net.Sockets.TcpClient();
+            var connect = tcp.ConnectAsync(uri.Host, uri.Port);
+            var done = await Task.WhenAny(connect, Task.Delay(2500));
+            if (done != connect)
+            {
+                verdict = await HostAnswersPingAsync(uri.Host)
+                    ? "PXRRS on the terminal is frozen or hung (port open, no accept) — reopen PxRetailerRestService or reboot the terminal"
+                    : $"terminal {uri.Host} is not answering — check Wi-Fi / IP";
+            }
+            else
+            {
+                try
+                {
+                    await connect; // surfaces refused
+                    verdict = e is TaskCanceledException
+                        ? "PXRRS accepted the connection but never answered — its request queue is stuck; restart PxRetailerRestService"
+                        : $"PXRRS reachable but the call failed: {e.GetBaseException().Message}";
+                }
+                catch (System.Net.Sockets.SocketException se) when (se.SocketErrorCode == System.Net.Sockets.SocketError.ConnectionRefused)
+                {
+                    verdict = "PXRRS is not running on the terminal (connection refused) — open PxRetailerRestService or reboot the terminal";
+                }
+            }
+        }
+        catch (Exception probe)
+        {
+            verdict = $"terminal probe failed: {probe.GetBaseException().Message}";
+        }
+
+        Console.WriteLine($"[JpxRestLink] DIAGNOSIS after {path}: {verdict}");
+        LinkHealth.Report(verdict);
+    }
+
+    private static async Task<bool> HostAnswersPingAsync(string host)
+    {
+        try
+        {
+            using var ping = new System.Net.NetworkInformation.Ping();
+            var reply = await ping.SendPingAsync(host, 1500);
+            return reply.Status == System.Net.NetworkInformation.IPStatus.Success;
+        }
+        catch (Exception)
+        {
+            return false; // no ping privilege: treat as unknown, not as down
         }
     }
 
@@ -1838,8 +1917,12 @@ public sealed class JpxRestLink : ITerminalLink
         var elapsed = Environment.TickCount64 - startedTickMs;
         if (elapsed <= 1500) return;
 
+        // Measured causes on the live A380 (2026-09-17/21): PXRRS's logger
+        // failure loop aging the process (3–20s), and Android freezing the
+        // PXRRS process outright (connects hang). Notify delivery to this
+        // register was never the cause once the callback was https.
         Console.WriteLine(
-            $"[JpxRestLink] SLOW: {what} took {elapsed / 1000.0:F1}s â€” PXRRS likely stalled on a notify delivery");
+            $"[JpxRestLink] SLOW: {what} took {elapsed / 1000.0:F1}s — PXRRS on the terminal is slow (aged process or frozen)");
 
         if (elapsed < 5000) return;                      // ordinary slowness, not the delivery timeout
         if (!_subscribedReal || _parkedByWatchdog) return; // already parked; stall is PXRRS-internal
@@ -1868,9 +1951,22 @@ public sealed class JpxRestLink : ITerminalLink
     private async Task<string?> GetVariableAsync(string name)
     {
         var started = Environment.TickCount64;
-        var response = await _http.GetAsync(
-            $"{_baseUrl}/getVariable?variableNames={Uri.EscapeDataString(name)}");
-        NoteLatency($"GET {name}", started);
+        HttpResponseMessage response;
+        try
+        {
+            response = await _http.GetAsync(
+                $"{_baseUrl}/getVariable?variableNames={Uri.EscapeDataString(name)}");
+        }
+        catch (Exception e) when (e is not ObjectDisposedException)
+        {
+            _ = Task.Run(() => DiagnoseFailureAsync($"GET {name}", e));
+            throw;
+        }
+        finally
+        {
+            NoteLatency($"GET {name}", started);
+        }
+        LinkHealth.Report(null);
         var body = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(body);
         if (!doc.RootElement.TryGetProperty("resultItems", out var items)) return null;
