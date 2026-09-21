@@ -82,6 +82,16 @@ public sealed class JpxRestLink : ITerminalLink
     private readonly string _baseUrl;
     private readonly string _notifyUrl;
     private readonly int _webSocketPort;
+
+    /// <summary>
+    /// Another register has claimed this terminal (its callback holds PXRRS's
+    /// single notify slot). While yielded this register stays quiet — no
+    /// re-subscribe, no trigger/result polling, no cart repaint — until the
+    /// operator does something here, which takes the terminal back.
+    /// </summary>
+    private volatile bool _yielded;
+    private string? _terminalOwner;
+    private int _ownershipCycle;
     private readonly string _startForm;
     private readonly string _notifyCertPath;
     private readonly string _notifyCertPassword;
@@ -359,7 +369,7 @@ public sealed class JpxRestLink : ITerminalLink
                 return;
             }
 
-            if (!_connected) continue;
+            if (!_connected || _yielded) continue;
 
             // While a tender is in flight the result poll owns the mailbox â€”
             // pausing the trigger poll halves the request pressure on PXRRS
@@ -661,7 +671,7 @@ public sealed class JpxRestLink : ITerminalLink
                     Console.WriteLine($"[JpxRestLink] note: {VarForeground} not settable on this package");
                 }
             }
-            else if (alive && ++_cyclesSinceSubscribe >= ResubscribeCycles)
+            else if (alive && !_yielded && ++_cyclesSinceSubscribe >= ResubscribeCycles)
             {
                 // Nothing reports that our callback was taken over â€” another
                 // client on this machine subscribing with the same identity
@@ -672,6 +682,14 @@ public sealed class JpxRestLink : ITerminalLink
                 _cyclesSinceSubscribe = 0;
                 await SubscribeAsync();
                 await PublishRegisterAddressAsync();
+            }
+
+            // Every other cycle (30s): is our callback still the one PXRRS
+            // posts to? If a different register has subscribed since, it is
+            // driving this terminal now — step back rather than fight it.
+            if (alive && _subscribed && ++_ownershipCycle % 2 == 0)
+            {
+                await CheckOwnershipAsync();
             }
 
             var connected = alive && _subscribed;
@@ -733,6 +751,10 @@ public sealed class JpxRestLink : ITerminalLink
 
     private async Task<bool> SendLockedAsync(PosMessage message)
     {
+        // Operator activity on a yielded register means they moved back to
+        // this PC: take the terminal back before doing anything on it.
+        if (_yielded) await ClaimTerminalAsync("operator activity");
+
         // START_PAYMENT and CANCEL_PAYMENT both travel in START_TRANS_REQ_DATA;
         // the terminal app reads the JSON "type" to tell them apart. Re-showing
         // StartTransaction re-fires IS_TRANS_STARTED=1 so the terminal always
@@ -1771,6 +1793,82 @@ public sealed class JpxRestLink : ITerminalLink
         var address = $"ws://{host}:{_webSocketPort}/pos";
         var ok = await SetVariableAsync(VarRegisterAddress, address);
         Console.WriteLine($"[JpxRestLink] register address {address} published to {VarRegisterAddress} ok={ok}");
+    }
+
+    /// <summary>
+    /// Whose callback PXRRS currently posts to. A different host than ours
+    /// means another register claimed the terminal after we did.
+    /// </summary>
+    private async Task CheckOwnershipAsync()
+    {
+        string? owner;
+        try
+        {
+            var response = await _http.PostAsync($"{_baseUrl}/getSubscriptionData", null);
+            var body = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(body);
+            owner = doc.RootElement.TryGetProperty("PXRRS", out var pxrrs)
+                && pxrrs.TryGetProperty("replyAddress", out var reply)
+                ? reply.GetString()
+                : null;
+        }
+        catch (Exception)
+        {
+            return; // transient; decide next cycle
+        }
+        if (string.IsNullOrWhiteSpace(owner)) return;
+
+        string ownerHost, ourHost;
+        try
+        {
+            ownerHost = new Uri(owner).Host;
+            ourHost = new Uri(_notifyUrl).Host;
+        }
+        catch (UriFormatException)
+        {
+            return;
+        }
+
+        if (ownerHost.Equals(ourHost, StringComparison.OrdinalIgnoreCase))
+        {
+            if (_yielded)
+            {
+                // The other register let go (or restarted us into ownership).
+                _yielded = false;
+                _terminalOwner = null;
+                LinkHealth.Report(null);
+                Console.WriteLine("[JpxRestLink] terminal is ours again");
+            }
+            return;
+        }
+
+        if (!_yielded || _terminalOwner != ownerHost)
+        {
+            _yielded = true;
+            _terminalOwner = ownerHost;
+            StopResultPolling();
+            DisarmCardTender($"terminal claimed by {ownerHost}");
+            Console.WriteLine($"[JpxRestLink] YIELDED — the register at {ownerHost} has claimed this terminal; ring an item or start a sale here to take it back");
+            LinkHealth.Report($"terminal is being driven by the register at {ownerHost} — ring an item or start a sale here to take it back");
+        }
+    }
+
+    /// <summary>
+    /// Take the terminal: our callback into PXRRS's notify slot, our address
+    /// into the variable WinkPay reads, PxRetailer back on screen. Idempotent.
+    /// </summary>
+    private async Task ClaimTerminalAsync(string why)
+    {
+        Console.WriteLine($"[JpxRestLink] claiming the terminal ({why})");
+        _subscribed = await SubscribeAsync();
+        if (!_subscribed) return;
+        await PublishRegisterAddressAsync();
+        await SetForegroundAsync(true);
+        InvalidateCartRender();
+        _yielded = false;
+        _terminalOwner = null;
+        _cyclesSinceSubscribe = 0;
+        LinkHealth.Report(null);
     }
 
     private async Task<bool> ProbeAsync()

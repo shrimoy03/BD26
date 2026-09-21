@@ -107,6 +107,15 @@ Behavior on the register:
   backgrounds PxRetailer but WinkPay never starts scanning, the register's
   status bar says "WinkPay app is not connected to this register" — on Windows
   that is almost always the firewall prompt for port 8181 having been declined.
+- **Moving one terminal between several registers needs no reinstall.** The
+  most recently started (or used) register owns the terminal: starting a
+  register subscribes its callback into PXRRS's single notify slot and
+  publishes its address; the app notices the new address within ~8 s and
+  moves its WebSocket over. A register that finds another register's callback
+  in the slot goes quiet (status bar: "terminal is being driven by the
+  register at …", no polling, no cart repaint) and takes the terminal back on
+  the next thing the operator does there — ringing an item is enough. The app
+  will not switch while a register sale is mid-capture.
 
 ### Simulating the Android app
 

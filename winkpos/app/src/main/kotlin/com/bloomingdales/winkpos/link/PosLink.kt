@@ -84,7 +84,7 @@ object PosLink {
                 WebSocketTransport(
                     candidates = { RegisterAddress.candidates(app) },
                     onConnectedTo = { url -> RegisterAddress.rememberGood(app, url) },
-                )
+                ).also { ws -> startRegisterWatch(app, ws) }
             }
             // PXRRS requires HTTPS with a client certificate even on loopback,
             // so the default is https:// and the transport needs a Context to
@@ -270,11 +270,41 @@ object PosLink {
         }
     }
 
+    /**
+     * Follow the terminal's current register. Each register parks its own
+     * WebSocket address in PxRetailer when it claims the terminal
+     * (RegisterAddress.VARIABLE); when that address changes to one other than
+     * the socket we hold, the operator has moved to another PC — drop the
+     * socket and connect there. Edge-triggered on the advertised value so an
+     * unreachable advertisement (firewall) cannot make us flap: the retry
+     * loop's candidate rotation handles that case. Skipped when the operator
+     * pinned an address in Settings. Off while a register sale is pending, so
+     * a mid-scan switch cannot orphan the capture.
+     */
+    private fun startRegisterWatch(app: Context, ws: WebSocketTransport) {
+        Thread({
+            var lastAdvertised: String? = null
+            while (true) {
+                try { Thread.sleep(REGISTER_WATCH_MS) } catch (_: InterruptedException) { return@Thread }
+                if (RegisterAddress.override(app).isNotBlank()) continue
+                val advertised = RegisterAddress.discoverFromTerminal(app) ?: continue
+                if (advertised == lastAdvertised) continue
+                lastAdvertised = advertised
+                val current = ws.connectedUrl
+                if (current != null && current != advertised && !RegisterSale.isPending) {
+                    Log.i(TAG, "terminal is now driven by $advertised (we are on $current) — switching")
+                    ws.reconnect("register changed to $advertised")
+                }
+            }
+        }, "RegisterWatch").apply { isDaemon = true }.start()
+    }
+
     private fun onMain(block: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) block() else mainHandler.post(block)
     }
 
     private const val TAG = "PosLink"
+    private const val REGISTER_WATCH_MS = 8_000L
     private const val CAPTURE_CHANNEL_ID = "winkpay-capture"
     private const val CAPTURE_NOTIFICATION_ID = 42
 

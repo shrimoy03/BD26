@@ -25,6 +25,22 @@ class WebSocketTransport(
     /** Which candidate the next attempt uses; rotates on failure. */
     private var attempt = 0
 
+    /** Address of the open socket, null while disconnected. */
+    @Volatile var connectedUrl: String? = null
+        private set
+
+    /**
+     * The register driving the terminal changed: drop the current socket and
+     * connect to whatever the candidates now say. No-op while disconnected —
+     * the retry loop re-evaluates the candidates on its own.
+     */
+    fun reconnect(reason: String) {
+        val current = socket ?: return
+        Log.i(TAG, "reconnecting — $reason")
+        attempt = 0
+        current.close(1000, reason) // onClosed -> dropAndRetry -> connect()
+    }
+
     private val client = OkHttpClient.Builder()
         .pingInterval(15, TimeUnit.SECONDS)
         .build()
@@ -63,6 +79,7 @@ class WebSocketTransport(
         client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 socket = webSocket
+                connectedUrl = url
                 attempt = 0
                 onConnectedTo(url)
                 webSocket.send(PosMessage(PosMessage.TYPE_HELLO).toJson())
@@ -87,6 +104,7 @@ class WebSocketTransport(
     private fun dropAndRetry(closed: WebSocket) {
         if (socket === closed) {
             socket = null
+            connectedUrl = null
             listener?.onDisconnected()
         } else {
             attempt++ // never opened: try the next candidate
