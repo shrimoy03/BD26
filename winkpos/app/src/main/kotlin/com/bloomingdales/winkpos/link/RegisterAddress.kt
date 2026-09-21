@@ -29,6 +29,11 @@ object RegisterAddress {
     private const val KEY_LAST_GOOD = "wsUrlLastGood"
     const val VARIABLE = "STR.TEXT_12"
 
+    /** Every PXRRS call costs the terminal dearly (its logger fails per write); do not re-ask within this window. */
+    private const val DISCOVERY_TTL_MS = 15_000L
+    @Volatile private var lastDiscovered: String? = null
+    @Volatile private var lastDiscoveryAt = 0L
+
     fun override(context: Context): String =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_OVERRIDE, "").orEmpty()
 
@@ -59,6 +64,16 @@ object RegisterAddress {
      * thread. Null when PXRRS is unreachable or nothing is published.
      */
     fun discoverFromTerminal(context: Context): String? {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastDiscoveryAt < DISCOVERY_TTL_MS) return lastDiscovered
+        val found = queryTerminal(context)
+        lastDiscoveryAt = now
+        if (found != lastDiscovered) Log.d(TAG, "register advertises ${found ?: "<nothing>"}")
+        lastDiscovered = found
+        return found
+    }
+
+    private fun queryTerminal(context: Context): String? {
         val base = BuildConfig.POS_LINK_PXRRS_URL.ifBlank { PxrrsTransport.DEFAULT_URL }.trimEnd('/')
         val client = PxrrsTransport.buildClient(base, context)
         for (url in PxrrsTransport.candidateUrlsFor(base)) {
@@ -75,10 +90,7 @@ object RegisterAddress {
                         val item = items.optJSONObject(i) ?: continue
                         if (item.optString("name") != VARIABLE) continue
                         val value = item.optString("value").trim()
-                        if (value.startsWith("ws://") || value.startsWith("wss://")) {
-                            Log.d(TAG, "register advertises $value (via $url)")
-                            return value
-                        }
+                        if (value.startsWith("ws://") || value.startsWith("wss://")) return value
                         return null
                     }
                 }
