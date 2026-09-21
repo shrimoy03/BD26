@@ -81,6 +81,7 @@ public sealed class JpxRestLink : ITerminalLink
 
     private readonly string _baseUrl;
     private readonly string _notifyUrl;
+    private readonly int _webSocketPort;
     private readonly string _startForm;
     private readonly string _notifyCertPath;
     private readonly string _notifyCertPassword;
@@ -156,6 +157,7 @@ public sealed class JpxRestLink : ITerminalLink
     {
         _baseUrl = config.BaseUrl.TrimEnd('/');
         _notifyUrl = config.NotifyUrl;
+        _webSocketPort = config.WebSocketPort;
         _startForm = string.IsNullOrWhiteSpace(config.StartForm) ? FormStart : config.StartForm;
         _notifyCertPath = config.NotifyCertPath;
         _notifyCertPassword = config.NotifyCertPassword;
@@ -651,6 +653,7 @@ public sealed class JpxRestLink : ITerminalLink
                 // PxRetailer in front of the WinkPay camera.
                 var foregroundOk = _resultPoll is not null || await SetForegroundAsync(true);
                 _subscribed = await SubscribeAsync();
+                if (_subscribed) await PublishRegisterAddressAsync();
                 // Subscribing is what actually matters; a package that does not
                 // define the foreground flag should not fail the whole link.
                 if (!foregroundOk)
@@ -668,6 +671,7 @@ public sealed class JpxRestLink : ITerminalLink
                 // original subscribe to hold.
                 _cyclesSinceSubscribe = 0;
                 await SubscribeAsync();
+                await PublishRegisterAddressAsync();
             }
 
             var connected = alive && _subscribed;
@@ -1740,6 +1744,33 @@ public sealed class JpxRestLink : ITerminalLink
             }
         });
         return true;
+    }
+
+    /// <summary>
+    /// Stock PxRetail variable the register's WebSocket address is parked in
+    /// for the WinkPay app to discover. STR.TEXT_12 is defined on every stock
+    /// package (getVariableList) and not bound to any form the demo shows.
+    /// </summary>
+    public const string VarRegisterAddress = "STR.TEXT_12";
+
+    /// <summary>
+    /// Tell the WinkPay app where this register is. The app used to have the
+    /// register's IP compiled in (the dev Mac's), so on any other PC the
+    /// biometric handoff backgrounded PxRetailer and the launch message went
+    /// to the wrong machine — WinkPay came up and nothing happened. The host
+    /// is the one the notify callback already resolved (the NIC that routes
+    /// to the terminal), so a multi-NIC store PC advertises the right one.
+    /// </summary>
+    private async Task PublishRegisterAddressAsync()
+    {
+        string host;
+        try { host = new Uri(_notifyUrl).Host; }
+        catch (UriFormatException) { return; }
+        if (host is "127.0.0.1" or "localhost") return; // nothing useful to advertise
+
+        var address = $"ws://{host}:{_webSocketPort}/pos";
+        var ok = await SetVariableAsync(VarRegisterAddress, address);
+        Console.WriteLine($"[JpxRestLink] register address {address} published to {VarRegisterAddress} ok={ok}");
     }
 
     private async Task<bool> ProbeAsync()

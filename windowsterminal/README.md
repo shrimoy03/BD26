@@ -96,6 +96,17 @@ Behavior on the register:
 - A `TENDER_SELECTED` event from the terminal (customer taps face/palm/card on
   the PxRetailer form) pulls the register into the card stage by itself.
 - One client at a time; a new connection replaces the old one.
+- **The app finds the register by itself.** On every PXRRS subscribe the
+  register writes its own WebSocket address (`ws://<register-ip>:8181/pos`,
+  using the NIC that routes to the terminal) into the stock PxRetailer variable
+  `STR.TEXT_12`; the app reads it from the PXRRS service on the terminal and
+  connects there. Order of preference in the app: the override typed into its
+  Settings screen ("Register address"), the advertised address, the last one
+  that connected, then the compiled-in `POS_LINK_WS_URL`. So the same APK works
+  against the dev Mac and any store PC without a rebuild. If a face tender
+  backgrounds PxRetailer but WinkPay never starts scanning, the register's
+  status bar says "WinkPay app is not connected to this register" — on Windows
+  that is almost always the firewall prompt for port 8181 having been declined.
 
 ### Simulating the Android app
 

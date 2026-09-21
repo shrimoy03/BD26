@@ -76,6 +76,15 @@ public sealed class CompositeLink : ITerminalLink
                 var yieldedOk = await yieldTask;
                 Console.WriteLine(
                     $"[CompositeLink] {message.Method}: winkpos websocket={winkPayOk}, PXRRS handover={yieldedOk}");
+                if (!winkPayOk)
+                {
+                    // PxRetailer has been backgrounded but nobody told WinkPay to
+                    // start — the customer sees WinkPay's idle page and nothing
+                    // happens. Say so instead of letting the sale sit there.
+                    LinkHealth.Report(
+                        "WinkPay app is not connected to this register (no WebSocket client) — "
+                        + "check Windows Firewall allows port 8181 and the app's register address");
+                }
                 return winkPayOk || yieldedOk;
             case PosMessageTypes.StartPayment:
                 return await _rest.SendAsync(message);

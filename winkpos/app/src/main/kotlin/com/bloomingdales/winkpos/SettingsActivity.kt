@@ -37,6 +37,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var enableIR: SwitchCompat
     private lateinit var palmMfaEnabled: SwitchCompat
     private lateinit var debugLogging: SwitchCompat
+    private lateinit var registerUrl: EditText
 
     private val rotations = listOf(0, 90, 180, 270)
 
@@ -64,6 +65,8 @@ class SettingsActivity : AppCompatActivity() {
         enableIR = findViewById(R.id.enableIR)
         palmMfaEnabled = findViewById(R.id.palmMfaEnabled)
         debugLogging = findViewById(R.id.debugLogging)
+        registerUrl = findViewById(R.id.registerUrl)
+        registerUrl.setText(com.bloomingdales.winkpos.link.RegisterAddress.override(this))
 
         findViewById<TextView>(R.id.envText).text = "Environment: ${BuildConfig.WINK_ENV}"
 
@@ -161,6 +164,12 @@ class SettingsActivity : AppCompatActivity() {
 
         Tuning.save(this, v)
         Tuning.applyLive(v)
+        val url = registerUrl.text.toString().trim()
+        if (url.isEmpty() || url.startsWith("ws://") || url.startsWith("wss://")) {
+            com.bloomingdales.winkpos.link.RegisterAddress.setOverride(this, url)
+        } else {
+            Toast.makeText(this, "Register address must start with ws://", Toast.LENGTH_LONG).show()
+        }
         bind(v)
 
         val msg = if (v.debugLogging != before.debugLogging) {

@@ -13,7 +13,17 @@ import okhttp3.WebSocketListener
  * (windowsterminal Services/TerminalLink.cs, ws://<register-ip>:8181/pos)
  * and reconnects forever with a fixed backoff until stopped.
  */
-class WebSocketTransport(private val url: String) : PosLinkTransport {
+class WebSocketTransport(
+    /** Register addresses to try, best first; re-evaluated on every (re)connect. */
+    private val candidates: () -> List<String>,
+    /** Called with the address that actually opened, so it can be remembered. */
+    private val onConnectedTo: (String) -> Unit = {},
+) : PosLinkTransport {
+
+    constructor(url: String) : this({ listOf(url) })
+
+    /** Which candidate the next attempt uses; rotates on failure. */
+    private var attempt = 0
 
     private val client = OkHttpClient.Builder()
         .pingInterval(15, TimeUnit.SECONDS)
@@ -41,10 +51,20 @@ class WebSocketTransport(private val url: String) : PosLinkTransport {
 
     private fun connect() {
         if (!running) return
+        val urls = candidates()
+        if (urls.isEmpty()) {
+            Log.w(TAG, "no register address known — retrying discovery")
+            scheduleRetry()
+            return
+        }
+        val url = urls[attempt % urls.size]
+        Log.d(TAG, "connecting to $url (${attempt % urls.size + 1}/${urls.size})")
         val request = Request.Builder().url(url).build()
         client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 socket = webSocket
+                attempt = 0
+                onConnectedTo(url)
                 webSocket.send(PosMessage(PosMessage.TYPE_HELLO).toJson())
                 listener?.onConnected()
             }
@@ -68,13 +88,18 @@ class WebSocketTransport(private val url: String) : PosLinkTransport {
         if (socket === closed) {
             socket = null
             listener?.onDisconnected()
+        } else {
+            attempt++ // never opened: try the next candidate
         }
-        if (running) {
-            Thread {
-                Thread.sleep(RETRY_DELAY_MS)
-                connect()
-            }.start()
-        }
+        scheduleRetry()
+    }
+
+    private fun scheduleRetry() {
+        if (!running) return
+        Thread {
+            Thread.sleep(RETRY_DELAY_MS)
+            connect()
+        }.start()
     }
 
     private companion object {

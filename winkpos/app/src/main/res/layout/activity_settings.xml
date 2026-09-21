@@ -204,6 +204,19 @@
                     android:textColor="@color/text_dark"
                     android:textSize="12sp"
                     android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/register_address_label"
+                    android:textSize="14sp" />
+
+                <EditText android:id="@+id/registerUrl" style="@style/SettingsEdit"
+                    android:layout_width="match_parent"
+                    android:hint="@string/register_address_hint"
+                    android:inputType="textUri"
+                    android:singleLine="true" />
             </LinearLayout>
         </LinearLayout>
     </ScrollView>

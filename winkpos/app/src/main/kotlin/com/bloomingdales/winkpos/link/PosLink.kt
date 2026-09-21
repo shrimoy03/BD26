@@ -77,13 +77,14 @@ object PosLink {
         if (transport != null) return
         transport = when (BuildConfig.POS_LINK_MODE) {
             "ws" -> {
-                val url = BuildConfig.POS_LINK_WS_URL
-                if (url.isBlank()) {
-                    Log.w(TAG, "POS_LINK_MODE=ws but POS_LINK_WS_URL is not set — link disabled")
-                    null
-                } else {
-                    WebSocketTransport(url)
-                }
+                // The register is found at runtime (Settings override, the
+                // address the register parks in PxRetailer, the last one that
+                // worked, then the compiled-in default) — see RegisterAddress.
+                val app = context.applicationContext
+                WebSocketTransport(
+                    candidates = { RegisterAddress.candidates(app) },
+                    onConnectedTo = { url -> RegisterAddress.rememberGood(app, url) },
+                )
             }
             // PXRRS requires HTTPS with a client certificate even on loopback,
             // so the default is https:// and the transport needs a Context to
