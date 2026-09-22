@@ -43,6 +43,12 @@ public sealed class CompositeLink : ITerminalLink
         // Only the WinkPay app on the terminal we drive may hold the socket.
         if (rest is JpxRestLink pxrrs && ws is WebSocketLinkOnPort socketServer)
         {
+            // While the terminal's WinkPay app holds the socket, the REST side
+            // skips the mailbox handshake (see JpxRestLink.WinkPayOverSocket).
+            pxrrs.WinkPayOverSocket = socketServer.IsConnected;
+            socketServer.ClientConnected += () => pxrrs.WinkPayOverSocket = true;
+            socketServer.ClientDisconnected += () => pxrrs.WinkPayOverSocket = socketServer.IsConnected;
+
             socketServer.RequiredTerminalHost = pxrrs.TerminalHost;
             socketServer.RequiredTerminalSerial = pxrrs.TerminalSerial;
             pxrrs.TerminalSerialChanged += serial =>

@@ -264,11 +264,19 @@ the demo down unless the terminal is prepared:
 
    Rebooting the terminal achieves the same.
 
-2. **PXRRS's file logger fails on every write** on Android 14 (it targets the
-   Android 12 storage rules and cannot create files under `/sdcard/Logger`),
-   printing a stack trace per attempt — about 33 per REST call plus a steady
-   trickle. Over hours the process ages into multi-second latency. There is no
-   shell-side fix (no root, permission not requested); reported to PAX.
+2. **PXRRS's file logger fails on every write** under scoped storage (it
+   targets the Android 12 storage rules and cannot create files under
+   `/sdcard/Logger`), printing a stack trace per attempt — about 33 per REST
+   call plus a steady trickle. On Android 14 (A380) that ages PXRRS itself into
+   multi-second latency over hours; on Android 11 (A3700) each attempt also
+   goes through the media provider ("Primary directory Logger not allowed"),
+   which then burns ~70% CPU on its own and the whole terminal crawls (load
+   average 17). There is no shell-side fix (no root; the permission is not
+   requested; the legacy-storage app-op is refused for its target SDK);
+   reported to PAX. The register therefore keeps its call count minimal: with
+   the terminal's WinkPay app on the WebSocket, a face/palm sale costs PXRRS
+   one call (PxRetailer to the background) instead of the mailbox handshake's
+   dozen.
    Reset when the register's SLOW warnings pile up:
 
    ```bash

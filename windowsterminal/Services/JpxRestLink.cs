@@ -91,6 +91,17 @@ public sealed class JpxRestLink : ITerminalLink
     /// </summary>
     private volatile bool _yielded;
 
+    /// <summary>
+    /// The WinkPay app on the driven terminal holds our WebSocket. Then the
+    /// order travels over the socket and the PxRetailer mailbox handshake is
+    /// dead weight: on the A380 and A3700 every PXRRS call costs the terminal
+    /// ~33 failed log writes (PAX's logger cannot write under scoped storage)
+    /// and the mailbox path was a dozen calls per face sale — publish, the
+    /// button-settle reads, five verify reads, three republishes, a result
+    /// poll every second for the whole capture. Set by CompositeLink.
+    /// </summary>
+    public volatile bool WinkPayOverSocket;
+
     /// <summary>Serial of the terminal behind <c>_baseUrl</c>, learned from every PXRRS reply.</summary>
     public string? TerminalSerial { get; private set; }
     public event Action<string>? TerminalSerialChanged;
@@ -871,6 +882,20 @@ public sealed class JpxRestLink : ITerminalLink
             try
             {
             Console.WriteLine($"[JpxRestLink] {message.Method} tender â€” handing the sale to WinkPay");
+
+            if (WinkPayOverSocket)
+            {
+                // The order is already on its way over the WebSocket; all
+                // PxRetailer needs is to get off the screen. One call.
+                var yielded = await SetForegroundAsync(false);
+                if (yielded)
+                {
+                    _foreground = false;
+                    InvalidateCartRender();
+                }
+                Console.WriteLine($"[JpxRestLink] order sent over the socket; PxRetailer backgrounded={yielded} (mailbox skipped)");
+                return yielded;
+            }
 
             // Custom package installed: run the diagram's Phase 2 verbatim â€”
             // one batch publishes the order and shows StartTransaction, and the
