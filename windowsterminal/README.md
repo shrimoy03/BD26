@@ -116,6 +116,12 @@ Behavior on the register:
   register at …", no polling, no cart repaint) and takes the terminal back on
   the next thing the operator does there — ringing an item is enough. The app
   will not switch while a register sale is mid-capture.
+- **The app comes up by itself.** It starts its register-link service on
+  boot and after an in-place APK update, discovers the register and connects
+  with no screen shown; the first sale opens the capture from the background.
+  Android delivers no broadcasts to an app that has never been launched, so
+  on a brand-new terminal tap the WinkPay icon once after installing — every
+  reboot and update after that is hands-off.
 - **A register talks only to the app on the terminal it drives.** The app
   sends its terminal's serial number (`terminalUptime.terminalSerialNumber`
   from PXRRS) as `?terminal=` on the WebSocket URL; the register learns the

@@ -329,6 +329,7 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
 
         winkPay.startCheckin(request, object : EmbeddedPaymentCallback {
             override fun onCheckinSuccess(result: EmbeddedCheckinResult) {
+                Log.i(TAG, "SDK check-in success for order ${PosLink.RegisterSale.orderId}")
                 checkinInFlight = false
                 captureOpen = false
                 try {
@@ -351,6 +352,7 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
             override fun onSuccess(result: EmbeddedPaymentResult) = Unit
 
             override fun onCancelled(requestId: String) {
+                Log.w(TAG, "SDK check-in cancelled (request $requestId) for order ${PosLink.RegisterSale.orderId}")
                 checkinInFlight = false
                 captureOpen = false
                 if (pendingBiometric != null) {
@@ -366,6 +368,7 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
             }
 
             override fun onFailure(error: EmbeddedPaymentError) {
+                Log.w(TAG, "SDK check-in FAILED for order ${PosLink.RegisterSale.orderId}: code=${error.errorCode} message=${error.errorMessage}")
                 checkinInFlight = false
                 captureOpen = false
                 val message = getString(
@@ -388,7 +391,10 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
         // over the error in that case.
         if (checkinInFlight) {
             // Single-display kiosk: launch the SDK's capture UI on this display.
+            Log.d(TAG, "SDK check-in ($biometricType) started — launching the capture UI")
             startActivity(winkPay.createNativeIntent(this))
+        } else {
+            Log.w(TAG, "SDK check-in ($biometricType) ended synchronously — capture UI not launched")
         }
     }
 
