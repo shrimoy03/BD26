@@ -70,7 +70,16 @@ object PosLink {
     // Capture-launch dedupe (see TYPE_START_PAYMENT below).
     private var lastLaunchOrderId: String? = null
     private var lastLaunchAtMs: Long = 0
+
+    /** Order ids whose launch intent WelcomeActivity has already handled. */
+    private val handledLaunches = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /** WelcomeActivity reports that it received the launch for [orderId]; the fallback is then not needed. */
+    fun noteLaunchHandled(orderId: String?) {
+        if (orderId != null) handledLaunches.add(orderId)
+    }
     private const val LAUNCH_DEDUPE_MS = 8_000L // below the register 10s retry window
+    private const val DIRECT_LAUNCH_GRACE_MS = 1_200L
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -230,12 +239,33 @@ object PosLink {
             .putExtra(EXTRA_ORDER_ID, RegisterSale.orderId)
             .putExtra(EXTRA_AMOUNT_CENTS, RegisterSale.amountCents)
 
+        val orderId = RegisterSale.orderId
+        if (orderId != null) handledLaunches.remove(orderId)
         try {
             ctx.startActivity(intent)
         } catch (e: Exception) {
             Log.w(TAG, "direct launch refused (expected when backgrounded): ${e.message}")
         }
 
+        // The full-screen intent exists for when Android silently drops the
+        // direct start (background-activity-launch rules, seen on the A380).
+        // Where the direct start IS allowed (A3700, Android 11) firing it too
+        // re-launches the single-task WelcomeActivity ~200 ms after the SDK's
+        // camera activity opened above it — and a single-task relaunch clears
+        // everything above it, so the capture died before the customer saw it.
+        // So: give the direct start a moment, and post the fallback only if
+        // WelcomeActivity never reported handling this order's launch.
+        mainHandler.postDelayed({
+            if (orderId != null && handledLaunches.contains(orderId)) {
+                Log.d(TAG, "direct launch handled for $orderId — no full-screen fallback")
+            } else {
+                Log.d(TAG, "direct launch not handled for $orderId — posting the full-screen fallback")
+                postFullScreenLaunch(ctx, intent)
+            }
+        }, DIRECT_LAUNCH_GRACE_MS)
+    }
+
+    private fun postFullScreenLaunch(ctx: Context, intent: android.content.Intent) {
         // Full-screen intent: reliably launches from the background.
         try {
             val nm = ctx.getSystemService(NotificationManager::class.java)
@@ -289,6 +319,10 @@ object PosLink {
             while (true) {
                 try { Thread.sleep(REGISTER_WATCH_MS) } catch (_: InterruptedException) { return@Thread }
                 if (RegisterAddress.override(app).isNotBlank()) continue
+                // Never touch PXRRS while a sale is in progress: the terminal is
+                // busy with the capture and every PXRRS call costs it (PAX's
+                // logger fails per write); a switch mid-sale is refused anyway.
+                if (RegisterSale.isPending) continue
                 val advertised = RegisterAddress.discoverFromTerminal(app) ?: continue
                 if (advertised == lastAdvertised) continue
                 lastAdvertised = advertised
@@ -306,7 +340,7 @@ object PosLink {
     }
 
     private const val TAG = "PosLink"
-    private const val REGISTER_WATCH_MS = 8_000L
+    private const val REGISTER_WATCH_MS = 15_000L
     private const val CAPTURE_CHANNEL_ID = "winkpay-capture"
     private const val CAPTURE_NOTIFICATION_ID = 42
 

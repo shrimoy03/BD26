@@ -182,6 +182,7 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
         }
         val orderId = PosLink.RegisterSale.orderId
         val amount = PosLink.RegisterSale.amountCents
+        PosLink.noteLaunchHandled(orderId) // tells PosLink the full-screen fallback is not needed
         if (amount <= 0L) {
             Log.w(TAG, "auto check-in ($biometric) but no register amount — intent=$intentAmount, RegisterSale=$amount")
         }
