@@ -44,6 +44,9 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
      */
     private var captureOpen = false
 
+    /** Register order the open capture belongs to, so a repeated launch for it is recognised. */
+    private var captureOrderId: String? = null
+
     /** A launch that arrived while a capture was still open; started once it lets go. */
     private var pendingBiometric: String? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -182,7 +185,18 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
         if (amount <= 0L) {
             Log.w(TAG, "auto check-in ($biometric) but no register amount — intent=$intentAmount, RegisterSale=$amount")
         }
+        // PosLink delivers the launch twice for one sale: a direct
+        // startActivity and, ~2 s later, the full-screen-intent fallback that
+        // exists for when the direct start is refused. The second arrival is
+        // the SAME order — never a reason to cancel the scan the customer is
+        // in the middle of (that sent them back to this page with the sale
+        // still pending). Only a different order supersedes an open capture.
+        if (captureOpen && orderId != null && orderId == captureOrderId) {
+            Log.d(TAG, "duplicate launch for order $orderId ignored — its capture is already running")
+            return
+        }
         Log.d(TAG, "auto check-in ($biometric) for register sale order=$orderId amount=$amount")
+        captureOrderId = orderId
         startCheckin(biometric)
     }
 
@@ -203,6 +217,7 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
     }
 
     override fun onCancelPayment(orderId: String?) {
+        captureOrderId = null
         pendingBiometric = null
         handler.removeCallbacks(startPendingCapture)
         cancelCaptureIfOpen("register cancelled the sale")
