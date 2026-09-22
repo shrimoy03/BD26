@@ -56,7 +56,12 @@ class WebSocketTransport(
     override fun start(listener: PosLinkTransport.Listener) {
         this.listener = listener
         running = true
-        connect()
+        // Off the main thread: start() is called from Application.onCreate and
+        // connect() resolves the candidates, which asks the terminal's PXRRS
+        // over HTTP — NetworkOnMainThreadException otherwise, so the first
+        // attempt always fell through to the compiled-in address and only the
+        // retries (already on a worker thread) discovered the real register.
+        Thread({ connect() }, "PosLinkWsConnect").apply { isDaemon = true }.start()
     }
 
     override fun stop() {

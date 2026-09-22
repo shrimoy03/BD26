@@ -128,7 +128,7 @@ object RegisterAddress {
                     }
                 }
             } catch (e: Exception) {
-                Log.d(TAG, "discovery via $url failed: ${e.message}")
+                Log.d(TAG, "discovery via $url failed: $e", e)
             }
         }
         return null
