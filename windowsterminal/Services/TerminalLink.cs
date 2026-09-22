@@ -1,4 +1,5 @@
 using System;
+using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
@@ -44,6 +45,14 @@ public sealed class TerminalLink : ITerminalLink
     /// <summary>Serial the connected app reported, if any.</summary>
     public string? ClientTerminalSerial { get; private set; }
 
+    /// <summary>
+    /// IP of the terminal this register drives. The WinkPay app runs on that
+    /// very device, so a client from any other address is another terminal's
+    /// app — refused even when it sends no serial (older app builds, or an app
+    /// that could not learn its serial from PXRRS).
+    /// </summary>
+    public string? RequiredTerminalHost { get; set; }
+
     public Task StartAsync() => StartAsync(DefaultPort);
 
     public async Task StartAsync(int port)
@@ -68,18 +77,34 @@ public sealed class TerminalLink : ITerminalLink
             return;
         }
 
-        var remote = context.Connection.RemoteIpAddress?.ToString() ?? "?";
+        var remoteAddress = context.Connection.RemoteIpAddress;
+        if (remoteAddress is { IsIPv4MappedToIPv6: true }) remoteAddress = remoteAddress.MapToIPv4();
+        var remote = remoteAddress?.ToString() ?? "?";
         var clientSerial = context.Request.Query["terminal"].ToString().Trim();
         var required = RequiredTerminalSerial;
+        var requiredHost = RequiredTerminalHost;
+
+        string? refusal = null;
         if (!string.IsNullOrEmpty(required) && !string.IsNullOrEmpty(clientSerial)
             && !clientSerial.Equals(required, StringComparison.OrdinalIgnoreCase))
         {
+            refusal = $"terminal {clientSerial} is not the one this register drives ({required})";
+        }
+        else if (string.IsNullOrEmpty(clientSerial) && !string.IsNullOrEmpty(requiredHost)
+            && !remote.Equals(requiredHost, StringComparison.OrdinalIgnoreCase)
+            && !IPAddress.IsLoopback(remoteAddress ?? IPAddress.None))
+        {
+            refusal = $"client at {remote} sent no terminal serial and is not the driven terminal ({requiredHost})";
+        }
+
+        if (refusal is not null)
+        {
             // Not the terminal this register drives: refuse before the upgrade
             // so the app sees a clean 403 and drops this address from its list.
-            Console.WriteLine($"[TerminalLink] refused {remote} (terminal {clientSerial}) — this register drives terminal {required}");
+            Console.WriteLine($"[TerminalLink] refused {remote} — {refusal}");
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             context.Response.Headers["X-Reject-Reason"] = "wrong-terminal";
-            await context.Response.WriteAsync($"this register drives terminal {required}");
+            await context.Response.WriteAsync($"this register drives terminal {required ?? requiredHost}");
             return;
         }
 

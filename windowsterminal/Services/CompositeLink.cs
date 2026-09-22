@@ -43,6 +43,7 @@ public sealed class CompositeLink : ITerminalLink
         // Only the WinkPay app on the terminal we drive may hold the socket.
         if (rest is JpxRestLink pxrrs && ws is WebSocketLinkOnPort socketServer)
         {
+            socketServer.RequiredTerminalHost = pxrrs.TerminalHost;
             socketServer.RequiredTerminalSerial = pxrrs.TerminalSerial;
             pxrrs.TerminalSerialChanged += serial =>
             {

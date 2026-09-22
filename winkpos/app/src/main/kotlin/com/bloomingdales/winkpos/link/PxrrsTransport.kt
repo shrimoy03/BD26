@@ -482,11 +482,30 @@ class PxrrsTransport(
                     val store = KeyStore.getInstance("PKCS12").apply {
                         load(stream, CLIENT_CERT_PASSWORD.toCharArray())
                     }
-                    KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
+                    val factory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
                         .apply { init(store, CLIENT_CERT_PASSWORD.toCharArray()) }
-                        .keyManagers
+                    // Always present our one client certificate. The default
+                    // key manager only offers a key whose issuer appears in the
+                    // CA list the server sends with its CertificateRequest; the
+                    // A3700's PXRRS sends a list ours is not on, so Android sent
+                    // nothing and the handshake died with
+                    // TLSV1_CERTIFICATE_REQUIRED (the A380 accepted the same
+                    // file, and curl from a PC presents it regardless).
+                    val alias = store.aliases().toList().firstOrNull { store.isKeyEntry(it) }
+                    factory.keyManagers.map { km ->
+                        if (km is javax.net.ssl.X509ExtendedKeyManager && alias != null) {
+                            FixedAliasKeyManager(km, alias)
+                        } else {
+                            km
+                        }
+                    }.toTypedArray()
                 }
             } catch (e: Exception) {
+                // Seen on the A3700 (Android 11): "exception unwrapping private
+                // key - NoSuchAlgorithmException" — the .p12 was written with
+                // PBES2/AES, which Android < 12 cannot read. The bundled files
+                // are exported with the legacy PBE-SHA1-3DES scheme for that
+                // reason (see certs/README.md); keep them that way.
                 Log.w(TAG, "no client certificate ($CLIENT_CERT_ASSET): ${e.message}")
                 null
             }
@@ -510,6 +529,21 @@ class PxrrsTransport(
                 Log.w(TAG, "TLS setup failed, falling back to default client: ${e.message}")
                 builder.build()
             }
+        }
+
+        /** Key manager that offers [alias] to every server, whatever CAs it asks for. */
+        private class FixedAliasKeyManager(
+            private val inner: javax.net.ssl.X509ExtendedKeyManager,
+            private val alias: String,
+        ) : javax.net.ssl.X509ExtendedKeyManager() {
+            override fun chooseClientAlias(keyType: Array<String>?, issuers: Array<java.security.Principal>?, socket: java.net.Socket?) = alias
+            override fun chooseEngineClientAlias(keyType: Array<String>?, issuers: Array<java.security.Principal>?, engine: javax.net.ssl.SSLEngine?) = alias
+            override fun getClientAliases(keyType: String?, issuers: Array<java.security.Principal>?) = arrayOf(alias)
+            override fun chooseServerAlias(keyType: String?, issuers: Array<java.security.Principal>?, socket: java.net.Socket?) = inner.chooseServerAlias(keyType, issuers, socket)
+            override fun chooseEngineServerAlias(keyType: String?, issuers: Array<java.security.Principal>?, engine: javax.net.ssl.SSLEngine?) = inner.chooseEngineServerAlias(keyType, issuers, engine)
+            override fun getServerAliases(keyType: String?, issuers: Array<java.security.Principal>?) = inner.getServerAliases(keyType, issuers)
+            override fun getCertificateChain(alias: String?) = inner.getCertificateChain(alias)
+            override fun getPrivateKey(alias: String?) = inner.getPrivateKey(alias)
         }
 
         // PxDesigner variables are type-prefixed (BOOL./STR./INT./LIST.), so

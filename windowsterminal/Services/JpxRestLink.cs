@@ -94,6 +94,20 @@ public sealed class JpxRestLink : ITerminalLink
     /// <summary>Serial of the terminal behind <c>_baseUrl</c>, learned from every PXRRS reply.</summary>
     public string? TerminalSerial { get; private set; }
     public event Action<string>? TerminalSerialChanged;
+
+    /// <summary>IP/host of the terminal this link drives (from the configured base URL); null for a loopback proxy.</summary>
+    public string? TerminalHost
+    {
+        get
+        {
+            try
+            {
+                var host = new Uri(_baseUrl).Host;
+                return host is "127.0.0.1" or "localhost" ? null : host;
+            }
+            catch (UriFormatException) { return null; }
+        }
+    }
     private string? _terminalOwner;
     private int _ownershipCycle;
     private readonly string _startForm;
