@@ -1872,6 +1872,10 @@ public sealed class JpxRestLink : ITerminalLink
             return;
         }
 
+        // A loopback replyURL is a parked slot (a register that released the
+        // terminal, possibly this very link on its way out) — nobody owns it.
+        if (_releasing || ownerHost is "127.0.0.1" or "localhost") return;
+
         if (ownerHost.Equals(ourHost, StringComparison.OrdinalIgnoreCase))
         {
             if (_yielded)
@@ -2209,9 +2213,12 @@ public sealed class JpxRestLink : ITerminalLink
     /// old terminal is left showing whatever we last put there. Best effort,
     /// each step capped at 3s so a dead terminal cannot stall the switch.
     /// </summary>
+    private volatile bool _releasing;
+
     private async Task ReleaseTerminalAsync()
     {
         if (!_connected) return;
+        _releasing = true;
         Console.WriteLine($"[JpxRestLink] releasing terminal {TerminalSerial ?? _baseUrl}");
         async Task Step(string what, Task<bool> work)
         {
