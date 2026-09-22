@@ -90,6 +90,10 @@ public sealed class JpxRestLink : ITerminalLink
     /// operator does something here, which takes the terminal back.
     /// </summary>
     private volatile bool _yielded;
+
+    /// <summary>Serial of the terminal behind <c>_baseUrl</c>, learned from every PXRRS reply.</summary>
+    public string? TerminalSerial { get; private set; }
+    public event Action<string>? TerminalSerialChanged;
     private string? _terminalOwner;
     private int _ownershipCycle;
     private readonly string _startForm;
@@ -1900,6 +1904,15 @@ public sealed class JpxRestLink : ITerminalLink
             using var doc = JsonDocument.Parse(body);
             if (doc.RootElement.ValueKind != JsonValueKind.Object) return;
             if (!doc.RootElement.TryGetProperty("terminalUptime", out var info)) return;
+            if (info.TryGetProperty("terminalSerialNumber", out var sn)
+                && sn.GetString() is { Length: > 0 } serial
+                && serial != TerminalSerial)
+            {
+                TerminalSerial = serial;
+                Console.WriteLine($"[JpxRestLink] terminal serial {serial}");
+                TerminalSerialChanged?.Invoke(serial);
+            }
+
             if (!info.TryGetProperty("uptime", out var value)) return;
 
             var uptime = value.GetString();
@@ -2149,9 +2162,38 @@ public sealed class JpxRestLink : ITerminalLink
         }
     }
 
+    /// <summary>
+    /// Leaving this terminal (setup screen retargeted the register, or the
+    /// register is closing): stop being its register. Otherwise the terminal
+    /// keeps posting notifies to us, its WinkPay app keeps following our
+    /// address and fighting the new terminal's app for our socket, and the
+    /// old terminal is left showing whatever we last put there. Best effort,
+    /// each step capped at 3s so a dead terminal cannot stall the switch.
+    /// </summary>
+    private async Task ReleaseTerminalAsync()
+    {
+        if (!_connected) return;
+        Console.WriteLine($"[JpxRestLink] releasing terminal {TerminalSerial ?? _baseUrl}");
+        async Task Step(string what, Task<bool> work)
+        {
+            var done = await Task.WhenAny(work, Task.Delay(3000));
+            var ok = done == work && await work;
+            Console.WriteLine($"[JpxRestLink]   release: {what} ok={ok}");
+        }
+        // Advertise nothing (PXRRS rejects an empty value; the app treats a
+        // non-ws:// value as "no register").
+        await Step("unpublish address", SetVariableAsync(VarRegisterAddress, "none"));
+        // Park the notify slot on the terminal's own loopback so it stops
+        // dialling us — PXRRS has no unsubscribe.
+        await Step("park subscription", PostAsync(
+            $"/subscribe?replyURL={Uri.EscapeDataString("http://127.0.0.1:9/notify")}", null));
+        await Step("PxRetailer to foreground", SetForegroundAsync(true));
+    }
+
     public async ValueTask DisposeAsync()
     {
         StopResultPolling();
+        try { await ReleaseTerminalAsync(); } catch (Exception e) { Console.WriteLine($"[JpxRestLink] release failed: {e.Message}"); }
         _cts.Cancel();
         if (_notifyServer is not null)
         {

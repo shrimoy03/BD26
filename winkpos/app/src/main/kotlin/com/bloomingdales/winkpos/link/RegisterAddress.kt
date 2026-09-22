@@ -34,6 +34,32 @@ object RegisterAddress {
     @Volatile private var lastDiscovered: String? = null
     @Volatile private var lastDiscoveryAt = 0L
 
+    /**
+     * This terminal's serial number, as PXRRS reports it in every reply
+     * (terminalUptime.terminalSerialNumber). Sent to the register as
+     * ?terminal= so a register only ever talks to the app on the terminal it
+     * drives; null until the first PXRRS reply has been seen.
+     */
+    @Volatile var terminalSerial: String? = null
+        private set
+
+    /** Registers that refused us as "wrong terminal", with the time the refusal expires. */
+    private val rejectedUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private const val REJECT_TTL_MS = 60_000L
+
+    /** A register answered 403: it drives another terminal. Skip it for a while and re-discover. */
+    fun markRejected(url: String) {
+        rejectedUntil[url] = android.os.SystemClock.elapsedRealtime() + REJECT_TTL_MS
+        lastDiscoveryAt = 0L // whatever advertised it is stale — ask the terminal again
+    }
+
+    /** The URL to actually dial: the candidate plus this terminal's identity. */
+    fun withIdentity(url: String): String {
+        val serial = terminalSerial ?: return url
+        val sep = if (url.contains('?')) "&" else "?"
+        return "$url${sep}terminal=$serial"
+    }
+
     fun override(context: Context): String =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_OVERRIDE, "").orEmpty()
 
@@ -55,7 +81,9 @@ object RegisterAddress {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_LAST_GOOD, null)?.takeIf { it.isNotBlank() }?.let { out += it }
         BuildConfig.POS_LINK_WS_URL.takeIf { it.isNotBlank() }?.let { out += it }
-        return out.toList()
+        val now = android.os.SystemClock.elapsedRealtime()
+        rejectedUntil.entries.removeIf { it.value < now }
+        return out.filter { !rejectedUntil.containsKey(it) }
     }
 
     /**
@@ -85,6 +113,11 @@ object RegisterAddress {
                         .build(),
                 ).execute().use { response ->
                     val root = JSONObject(response.body?.string().orEmpty())
+                    root.optJSONObject("terminalUptime")?.optString("terminalSerialNumber")
+                        ?.takeIf { it.isNotBlank() }?.let { sn ->
+                            if (sn != terminalSerial) Log.d(TAG, "this terminal is $sn")
+                            terminalSerial = sn
+                        }
                     val items = root.optJSONArray("resultItems") ?: return@use
                     for (i in 0 until items.length()) {
                         val item = items.optJSONObject(i) ?: continue

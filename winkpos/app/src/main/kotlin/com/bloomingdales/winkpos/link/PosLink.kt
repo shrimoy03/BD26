@@ -84,6 +84,8 @@ object PosLink {
                 WebSocketTransport(
                     candidates = { RegisterAddress.candidates(app) },
                     onConnectedTo = { url -> RegisterAddress.rememberGood(app, url) },
+                    decorate = { url -> RegisterAddress.withIdentity(url) },
+                    onRejected = { url -> RegisterAddress.markRejected(url) },
                 ).also { ws -> startRegisterWatch(app, ws) }
             }
             // PXRRS requires HTTPS with a client certificate even on loopback,

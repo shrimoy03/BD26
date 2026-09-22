@@ -39,6 +39,17 @@ public sealed class CompositeLink : ITerminalLink
             link.ClientDisconnected += RaiseState;
             link.MessageReceived += m => MessageReceived?.Invoke(m);
         }
+
+        // Only the WinkPay app on the terminal we drive may hold the socket.
+        if (rest is JpxRestLink pxrrs && ws is WebSocketLinkOnPort socketServer)
+        {
+            socketServer.RequiredTerminalSerial = pxrrs.TerminalSerial;
+            pxrrs.TerminalSerialChanged += serial =>
+            {
+                socketServer.RequiredTerminalSerial = serial;
+                Console.WriteLine($"[CompositeLink] WebSocket now bound to terminal {serial}");
+            };
+        }
     }
 
     public bool IsConnected => _rest.IsConnected || _ws.IsConnected;

@@ -30,6 +30,20 @@ public sealed class TerminalLink : ITerminalLink
 
     public bool IsConnected => _socket is { State: WebSocketState.Open };
 
+    /// <summary>
+    /// Serial number of the terminal this register is driving (from PXRRS's
+    /// replies). Set, only the WinkPay app running ON that terminal is let in:
+    /// the app passes its own serial as ?terminal= on the WebSocket URL, and a
+    /// mismatch is refused with 403. Without this, a register that had ever
+    /// advertised itself to two terminals had both apps connecting and
+    /// replacing each other every few seconds, and a sale's result landed on
+    /// whichever device held the socket at that instant.
+    /// </summary>
+    public string? RequiredTerminalSerial { get; set; }
+
+    /// <summary>Serial the connected app reported, if any.</summary>
+    public string? ClientTerminalSerial { get; private set; }
+
     public Task StartAsync() => StartAsync(DefaultPort);
 
     public async Task StartAsync(int port)
@@ -54,14 +68,35 @@ public sealed class TerminalLink : ITerminalLink
             return;
         }
 
+        var remote = context.Connection.RemoteIpAddress?.ToString() ?? "?";
+        var clientSerial = context.Request.Query["terminal"].ToString().Trim();
+        var required = RequiredTerminalSerial;
+        if (!string.IsNullOrEmpty(required) && !string.IsNullOrEmpty(clientSerial)
+            && !clientSerial.Equals(required, StringComparison.OrdinalIgnoreCase))
+        {
+            // Not the terminal this register drives: refuse before the upgrade
+            // so the app sees a clean 403 and drops this address from its list.
+            Console.WriteLine($"[TerminalLink] refused {remote} (terminal {clientSerial}) — this register drives terminal {required}");
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            context.Response.Headers["X-Reject-Reason"] = "wrong-terminal";
+            await context.Response.WriteAsync($"this register drives terminal {required}");
+            return;
+        }
+
         var socket = await context.WebSockets.AcceptWebSocketAsync();
         var previous = Interlocked.Exchange(ref _socket, socket);
         if (previous is not null)
         {
+            Console.WriteLine("[TerminalLink] replacing the previous client");
             try { previous.Abort(); } catch { /* replaced connection */ }
         }
 
-        Console.WriteLine("[TerminalLink] client connected");
+        ClientTerminalSerial = string.IsNullOrEmpty(clientSerial) ? null : clientSerial;
+        Console.WriteLine(
+            $"[TerminalLink] client connected from {remote}"
+            + (ClientTerminalSerial is null
+                ? (required is null ? "" : " (no terminal serial sent — older app build)")
+                : $" (terminal {ClientTerminalSerial})"));
         ClientConnected?.Invoke();
         await ReceiveLoopAsync(socket);
 

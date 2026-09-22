@@ -163,6 +163,11 @@ internal sealed class WebSocketLinkOnPort : ITerminalLink
     }
 
     public bool IsConnected => _link.IsConnected;
+    public string? RequiredTerminalSerial
+    {
+        get => _link.RequiredTerminalSerial;
+        set => _link.RequiredTerminalSerial = value;
+    }
     public Task StartAsync() => _link.StartAsync(_port);
     public Task<bool> SendAsync(PosMessage message) => _link.SendAsync(message);
     public ValueTask DisposeAsync() => _link.DisposeAsync();

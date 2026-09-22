@@ -116,6 +116,17 @@ Behavior on the register:
   register at …", no polling, no cart repaint) and takes the terminal back on
   the next thing the operator does there — ringing an item is enough. The app
   will not switch while a register sale is mid-capture.
+- **A register talks only to the app on the terminal it drives.** The app
+  sends its terminal's serial number (`terminalUptime.terminalSerialNumber`
+  from PXRRS) as `?terminal=` on the WebSocket URL; the register learns the
+  serial of the terminal behind its configured IP from the same field and
+  refuses any other terminal's app with HTTP 403 ("this register drives
+  terminal …"), which the app remembers for a minute while it re-discovers.
+  When a register leaves a terminal (setup screen retargets it, or it exits) it
+  first clears its advertised address there, parks the terminal's notify slot
+  on loopback and puts PxRetailer back on screen, so the old terminal stops
+  following it. Before this, two terminals' apps could both follow one
+  register and replace each other on its single socket every few seconds.
 
 ### Simulating the Android app
 

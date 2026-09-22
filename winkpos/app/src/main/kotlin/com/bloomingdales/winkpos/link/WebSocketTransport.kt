@@ -18,6 +18,10 @@ class WebSocketTransport(
     private val candidates: () -> List<String>,
     /** Called with the address that actually opened, so it can be remembered. */
     private val onConnectedTo: (String) -> Unit = {},
+    /** Turns a candidate into the URL actually dialled (adds this terminal's identity). */
+    private val decorate: (String) -> String = { it },
+    /** The register at this address refused us (HTTP 403: it drives another terminal). */
+    private val onRejected: (String) -> Unit = {},
 ) : PosLinkTransport {
 
     constructor(url: String) : this({ listOf(url) })
@@ -75,7 +79,7 @@ class WebSocketTransport(
         }
         val url = urls[attempt % urls.size]
         Log.d(TAG, "connecting to $url (${attempt % urls.size + 1}/${urls.size})")
-        val request = Request.Builder().url(url).build()
+        val request = Request.Builder().url(decorate(url)).build()
         client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 socket = webSocket
@@ -91,7 +95,12 @@ class WebSocketTransport(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.w(TAG, "connection lost: ${t.message}")
+                if (response?.code == 403) {
+                    Log.w(TAG, "$url refused us: ${response.header("X-Reject-Reason") ?: "403"} — that register drives another terminal")
+                    onRejected(url)
+                } else {
+                    Log.w(TAG, "connection lost: ${t.message}")
+                }
                 dropAndRetry(webSocket)
             }
 
