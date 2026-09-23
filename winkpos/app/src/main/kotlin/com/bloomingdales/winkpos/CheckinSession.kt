@@ -16,6 +16,8 @@ object CheckinSession {
         val issuer: String,
         val isDefault: Boolean,
         val isExpired: Boolean,
+        /** Customer opted this card into autopay: charge without the confirmation page. */
+        val autoPay: Boolean = false,
     ) {
         /** Last 4 digits pulled out of the alias (e.g. "**** 1234" -> "1234"). */
         val last4: String
@@ -85,10 +87,24 @@ object CheckinSession {
                     issuer = c.optString("issuer"),
                     isDefault = c.optBoolean("isDefault", false),
                     isExpired = c.optBoolean("isExpired", false),
+                    autoPay = readAutoPay(c),
                 )
             }
         }
         cards = parsed
+    }
+
+    /**
+     * The backend's name for the card-level autopay opt-in is not pinned down
+     * yet; accept the plausible spellings, as a boolean or a "true" string.
+     */
+    private fun readAutoPay(c: JSONObject): Boolean {
+        for (key in listOf("autoPay", "autopay", "isAutoPay", "autoPayEnabled", "autoPayment")) {
+            if (!c.has(key)) continue
+            if (c.optBoolean(key, false)) return true
+            if (c.optString(key).equals("true", ignoreCase = true)) return true
+        }
+        return false
     }
 
     fun clear() {

@@ -60,6 +60,10 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
     private lateinit var rewardRow: View
     private lateinit var couponRow: View
     private lateinit var couponValue: TextView
+    private lateinit var processingDetail: TextView
+
+    /** Pending autopay charge; cleared if the register cancels during the confirmation beat. */
+    private var autoPayRunnable: Runnable? = null
     private lateinit var cartBadge: TextView
     private lateinit var payButton: Button
     private lateinit var orderTitle: TextView
@@ -108,6 +112,7 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         rewardRow = findViewById(R.id.rewardRow)
         couponRow = findViewById(R.id.couponRow)
         couponValue = findViewById(R.id.couponValue)
+        processingDetail = findViewById(R.id.processingDetail)
         cartBadge = findViewById(R.id.cartBadge)
         payButton = findViewById(R.id.payButton)
         orderTitle = findViewById(R.id.orderTitle)
@@ -156,6 +161,14 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         findViewById<Button>(R.id.offer3Redeem).setOnClickListener(offerToast)
 
         payButton.setOnClickListener { pay() }
+
+        // Autopay: the customer opted this card in (or Settings forces it), so a
+        // register sale skips the confirmation page. The processing screen
+        // names the customer and the card for a moment, then the charge runs.
+        val card = CheckinSession.preferredCard
+        if (openedForRegisterSale && card != null && autoPayEnabled(card)) {
+            startAutoPay(card)
+        }
 
         // Swallow Back while a charge is in flight — leaving mid-payment could
         // hide a completed charge.
@@ -254,6 +267,8 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
     }
 
     override fun onCancelPayment(orderId: String?) {
+        autoPayRunnable?.let { mainHandler.removeCallbacks(it) }
+        autoPayRunnable = null
         toast(getString(R.string.register_sale_cancelled))
         // The register voided the sale this screen was opened for: leave it,
         // rather than falling back to the standalone demo cart with a live
@@ -339,12 +354,43 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         )
     }
 
+    private fun autoPayEnabled(card: CheckinSession.Card): Boolean =
+        when (Tuning.load(this).autoPayMode) {
+            "always" -> true
+            "off" -> false
+            else -> card.autoPay
+        }
+
+    /** Show the processing screen with who/what is being charged, then charge after a short beat. */
+    private fun startAutoPay(card: CheckinSession.Card) {
+        if (totalCents <= 0 || paying) return
+        showProcessing(card)
+        val r = Runnable {
+            autoPayRunnable = null
+            if (isFinishing || isDestroyed) return@Runnable
+            if (!registerMode) return@Runnable // cancelled meanwhile
+            pay()
+        }
+        autoPayRunnable = r
+        mainHandler.postDelayed(r, AUTOPAY_CONFIRM_MS)
+    }
+
+    private fun showProcessing(card: CheckinSession.Card) {
+        processingDetail.text = getString(
+            R.string.processing_detail,
+            CheckinSession.firstName.ifEmpty { "Loyallist" },
+            card.last4,
+            money(totalCents),
+        )
+        findViewById<View>(R.id.processingOverlay).visibility = View.VISIBLE
+    }
+
     private fun pay() {
         val card = CheckinSession.preferredCard ?: return
         if (paying || totalCents <= 0) return
         paying = true
         payButton.text = getString(R.string.processing)
-        findViewById<View>(R.id.processingOverlay).visibility = View.VISIBLE
+        showProcessing(card)
         renderTotals()
 
         val amount = totalCents
@@ -427,6 +473,8 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         String.format(Locale.US, "$%,.2f", cents / 100.0)
 
     override fun onDestroy() {
+        autoPayRunnable?.let { mainHandler.removeCallbacks(it) }
+        autoPayRunnable = null
         super.onDestroy()
         executor.shutdown()
     }
@@ -434,6 +482,8 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
     companion object {
         private const val TAX_RATE = 0.0825
         private const val COUPON_RATE = 0.15
+        /** How long the autopay processing screen shows the name and card before charging. */
+        private const val AUTOPAY_CONFIRM_MS = 1_500L
 
         fun intent(context: Context): Intent =
             Intent(context, DashboardActivity::class.java)

@@ -24,6 +24,11 @@
         <item>session (default)</item>
         <item>bridge (previous pipeline)</item>
     </string-array>
+    <string-array name="autopay_mode_options">
+        <item>off — always show the confirmation page</item>
+        <item>follow the card\'s autopay flag (default)</item>
+        <item>always — every register sale autopays</item>
+    </string-array>
     <string-array name="orientation_options">
         <item>auto</item><item>landscape</item><item>portrait</item><item>sensorLandscape</item><item>reverseLandscape</item>
     </string-array>

@@ -45,6 +45,7 @@ object Tuning {
         val palmEngineDriver: String = "session", // session | bridge (rollback)
         val isFrontCamera: Boolean = true,       // palm camera faces the customer
         val readWinkConfig: Boolean = false,     // on-device test override file; needs app relaunch
+        val autoPayMode: String = "card",        // off | card (follow the card's flag) | always
         val debugLogging: Boolean = false,       // needs app relaunch
     )
 
@@ -75,6 +76,7 @@ object Tuning {
             palmEngineDriver = s("palmEngineDriver")?.takeIf { it in ENGINE_DRIVERS } ?: d.palmEngineDriver,
             isFrontCamera = p.getBoolean("isFrontCamera", d.isFrontCamera),
             readWinkConfig = p.getBoolean("readWinkConfig", d.readWinkConfig),
+            autoPayMode = s("autoPayMode")?.takeIf { it in AUTOPAY_MODES } ?: d.autoPayMode,
             debugLogging = p.getBoolean("debugLogging", d.debugLogging),
         )
     }
@@ -103,6 +105,7 @@ object Tuning {
             putString("palmEngineDriver", v.palmEngineDriver)
             putBoolean("isFrontCamera", v.isFrontCamera)
             putBoolean("readWinkConfig", v.readWinkConfig)
+            putString("autoPayMode", v.autoPayMode)
             putBoolean("debugLogging", v.debugLogging)
         }.apply()
     }
@@ -110,6 +113,7 @@ object Tuning {
     /** Allowed values, in the order the Settings spinners list them. */
     val LIVENESS_MODES = listOf("hires", "gesture", "both")
     val ENGINE_DRIVERS = listOf("session", "bridge")
+    val AUTOPAY_MODES = listOf("off", "card", "always")
 
     fun reset(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()

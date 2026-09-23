@@ -43,6 +43,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var palmEngineDriver: Spinner
     private lateinit var isFrontCamera: SwitchCompat
     private lateinit var readWinkConfig: SwitchCompat
+    private lateinit var autoPayMode: Spinner
 
     private val rotations = listOf(0, 90, 180, 270)
 
@@ -75,6 +76,7 @@ class SettingsActivity : AppCompatActivity() {
         palmEngineDriver = spinner(R.id.palmEngineDriver, R.array.palm_engine_driver_options)
         isFrontCamera = findViewById(R.id.isFrontCamera)
         readWinkConfig = findViewById(R.id.readWinkConfig)
+        autoPayMode = spinner(R.id.autoPayMode, R.array.autopay_mode_options)
         registerUrl = findViewById(R.id.registerUrl)
         registerUrl.setText(com.bloomingdales.winkpos.link.RegisterAddress.override(this))
 
@@ -143,6 +145,7 @@ class SettingsActivity : AppCompatActivity() {
         palmEngineDriver.setSelection(Tuning.ENGINE_DRIVERS.indexOf(v.palmEngineDriver).coerceAtLeast(0))
         isFrontCamera.isChecked = v.isFrontCamera
         readWinkConfig.isChecked = v.readWinkConfig
+        autoPayMode.setSelection(Tuning.AUTOPAY_MODES.indexOf(v.autoPayMode).coerceAtLeast(0))
     }
 
     private fun save() {
@@ -180,6 +183,7 @@ class SettingsActivity : AppCompatActivity() {
             palmEngineDriver = Tuning.ENGINE_DRIVERS[palmEngineDriver.selectedItemPosition],
             isFrontCamera = isFrontCamera.isChecked,
             readWinkConfig = readWinkConfig.isChecked,
+            autoPayMode = Tuning.AUTOPAY_MODES[autoPayMode.selectedItemPosition],
         )
 
         Tuning.save(this, v)
