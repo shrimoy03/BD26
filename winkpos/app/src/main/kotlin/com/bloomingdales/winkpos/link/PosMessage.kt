@@ -17,6 +17,8 @@ data class PosMessage(
     val method: String? = null,   // shown as the tender label on the register
     val reason: String? = null,   // shown on decline
     val token: String? = null,    // card token for the gateway simulator
+    val discountCents: Long? = null,  // coupon redeemed on the terminal, already off amountCents
+    val discountLabel: String? = null,
 ) {
     fun toJson(): String = JSONObject().apply {
         put("type", type)
@@ -27,6 +29,8 @@ data class PosMessage(
         method?.let { put("method", it) }
         reason?.let { put("reason", it) }
         token?.let { put("token", it) }
+        discountCents?.let { put("discountCents", it) }
+        discountLabel?.let { put("discountLabel", it) }
     }.toString()
 
     companion object {
@@ -54,6 +58,8 @@ data class PosMessage(
                 method = o.optString("method").ifBlank { null },
                 reason = o.optString("reason").ifBlank { null },
                 token = o.optString("token").ifBlank { null },
+                discountCents = if (o.has("discountCents")) o.optLong("discountCents") else null,
+                discountLabel = o.optString("discountLabel").ifBlank { null },
             )
         } catch (_: Exception) {
             null

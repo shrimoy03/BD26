@@ -13,6 +13,12 @@ public sealed record Product(string Sku, string Name, string Dept, decimal Price
     public string PriceDisplay => Money.Format(Price);
 }
 
+/// <summary>A coupon redeemed on the customer terminal; prints as a negative line.</summary>
+public sealed record Coupon(string Label, decimal Savings)
+{
+    public string AysAmount => (-Savings).ToString("N2");
+}
+
 public sealed record Payment(string Label, string Detail, decimal Amount)
 {
     public string AmountDisplay => Money.Format(Amount);

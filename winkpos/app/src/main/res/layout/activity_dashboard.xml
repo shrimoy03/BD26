@@ -472,6 +472,30 @@
             </LinearLayout>
 
             <LinearLayout
+                android:id="@+id/couponRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/coupon_line"
+                    android:textColor="@color/loyallist_purple"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/couponValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/loyallist_purple"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <LinearLayout
                 android:id="@+id/taxesRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

@@ -69,7 +69,7 @@ Every frame is one JSON object (camelCase). See `Models/PosMessages.cs`.
 | Android → POS | `HELLO` | — (optional greeting on connect) |
 | POS → Android | `START_PAYMENT` | `orderId`, `amountCents`, `currency` |
 | POS → Android | `CANCEL_PAYMENT` | `orderId` |
-| Android → POS | `PAYMENT_RESULT` | `orderId`, `status` (`APPROVED` \| `DECLINED` \| `CANCELLED`), `amountCents?`, `method?` (shown as the tender label), `reason?` (shown on decline) |
+| Android → POS | `PAYMENT_RESULT` | `orderId`, `status` (`APPROVED` \| `DECLINED` \| `CANCELLED`), `amountCents?` (what was charged), `method?` (shown as the tender label), `reason?` (shown on decline), `discountCents?` + `discountLabel?` (a coupon the customer redeemed on the terminal, already deducted from `amountCents`; the register books it as a coupon line so the sale balances) |
 
 Behavior on the register:
 - **T1 Bloomingdale's Card / Bloomingdale's Pay** (checkout) sends

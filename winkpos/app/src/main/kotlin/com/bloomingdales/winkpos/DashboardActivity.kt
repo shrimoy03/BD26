@@ -41,6 +41,8 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
 
     private val cart = mutableListOf<DemoItem>()
     private var rewardApplied = false
+    /** The 15% beauty offer, redeemed on this screen; works for register and standalone sales. */
+    private var couponApplied = false
     private var paying = false
 
     // One order id per cart state, reused across retries so the gateway can
@@ -56,6 +58,8 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
     private lateinit var taxesValue: TextView
     private lateinit var totalValue: TextView
     private lateinit var rewardRow: View
+    private lateinit var couponRow: View
+    private lateinit var couponValue: TextView
     private lateinit var cartBadge: TextView
     private lateinit var payButton: Button
     private lateinit var orderTitle: TextView
@@ -77,11 +81,17 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
     private val subtotalCents: Int get() = cart.sumOf { it.priceCents }
     private val rewardCents: Int get() = if (rewardApplied && subtotalCents > 0) 1_000 else 0
     private val taxCents: Int get() = Math.round((subtotalCents - rewardCents) * TAX_RATE).toInt()
+    /** The amount the coupon percentage applies to: the register's total, or the local subtotal. */
+    private val couponBaseCents: Int
+        get() = if (registerMode) PosLink.RegisterSale.amountCents.toInt() else subtotalCents
+    private val couponCents: Int
+        get() = if (couponApplied && couponBaseCents > 0) Math.round(couponBaseCents * COUPON_RATE).toInt() else 0
     private val totalCents: Int
         get() = if (registerMode) {
-            PosLink.RegisterSale.amountCents.toInt() // register total is final (tax included)
+            // register total is final (tax included); the coupon comes off it
+            (PosLink.RegisterSale.amountCents.toInt() - couponCents).coerceAtLeast(0)
         } else {
-            subtotalCents - rewardCents + taxCents
+            (subtotalCents - rewardCents - couponCents + taxCents).coerceAtLeast(0)
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -96,6 +106,8 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         taxesValue = findViewById(R.id.taxesValue)
         totalValue = findViewById(R.id.totalValue)
         rewardRow = findViewById(R.id.rewardRow)
+        couponRow = findViewById(R.id.couponRow)
+        couponValue = findViewById(R.id.couponValue)
         cartBadge = findViewById(R.id.cartBadge)
         payButton = findViewById(R.id.payButton)
         orderTitle = findViewById(R.id.orderTitle)
@@ -125,7 +137,21 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
             }
         }
         val offerToast = View.OnClickListener { toast(getString(R.string.offer_applied)) }
-        findViewById<Button>(R.id.offer1Redeem).setOnClickListener(offerToast)
+        // BEAUTY 15% OFF is a real coupon: it comes off the amount charged, and
+        // on a register sale rides back to the register as a coupon line.
+        findViewById<Button>(R.id.offer1Redeem).setOnClickListener {
+            when {
+                paying -> Unit
+                couponBaseCents <= 0 -> toast(getString(R.string.coupon_needs_items))
+                couponApplied -> toast(getString(R.string.coupon_already_applied))
+                else -> {
+                    couponApplied = true
+                    currentOrderId = null
+                    renderTotals()
+                    toast(getString(R.string.coupon_applied, money(couponCents)))
+                }
+            }
+        }
         findViewById<Button>(R.id.offer2Redeem).setOnClickListener(offerToast)
         findViewById<Button>(R.id.offer3Redeem).setOnClickListener(offerToast)
 
@@ -299,10 +325,12 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
     }
 
     private fun renderTotals() {
-        subtotalValue.text = money(if (registerMode) totalCents else subtotalCents)
+        subtotalValue.text = money(if (registerMode) PosLink.RegisterSale.amountCents.toInt() else subtotalCents)
         taxesValue.text = money(if (registerMode) 0 else taxCents)
         totalValue.text = money(totalCents)
         rewardRow.visibility = if (!registerMode && rewardCents > 0) View.VISIBLE else View.GONE
+        couponRow.visibility = if (couponCents > 0) View.VISIBLE else View.GONE
+        couponValue.text = "-" + money(couponCents)
 
         val canPay = totalCents > 0 && CheckinSession.preferredCard != null && !paying
         payButton.isEnabled = canPay
@@ -348,6 +376,9 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
                             PosMessage.STATUS_APPROVED,
                             method = "Wink",
                             token = card.winkCardToken,
+                            chargedCents = amount.toLong(),
+                            discountCents = couponCents.toLong(),
+                            discountLabel = getString(R.string.coupon_line),
                         )
                     }
                     startActivity(
@@ -402,6 +433,7 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
 
     companion object {
         private const val TAX_RATE = 0.0825
+        private const val COUPON_RATE = 0.15
 
         fun intent(context: Context): Intent =
             Intent(context, DashboardActivity::class.java)

@@ -21,6 +21,9 @@ public sealed record PosMessage
     public string? Method { get; init; }   // e.g. WINK | CARD
     public string? Reason { get; init; }
     public string? Token { get; init; }    // card token for the gateway simulator
+    /// <summary>Coupon the customer redeemed on the terminal, already deducted from AmountCents.</summary>
+    public long? DiscountCents { get; init; }
+    public string? DiscountLabel { get; init; }
 
     // DISPLAY_CART — basket mirrored onto the customer terminal
     public CartLine[]? Items { get; init; }

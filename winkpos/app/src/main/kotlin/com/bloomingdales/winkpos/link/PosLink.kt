@@ -149,9 +149,13 @@ object PosLink {
         method: String? = null,
         reason: String? = null,
         token: String? = null,
+        /** What was actually charged when a coupon reduced the register's amount. */
+        chargedCents: Long? = null,
+        discountCents: Long? = null,
+        discountLabel: String? = null,
     ) {
         val orderId = RegisterSale.orderId ?: return
-        val amount = RegisterSale.amountCents
+        val amount = chargedCents ?: RegisterSale.amountCents
         RegisterSale.clear()
         transport?.send(
             PosMessage(
@@ -162,6 +166,8 @@ object PosLink {
                 method = method,
                 reason = reason,
                 token = token,
+                discountCents = discountCents?.takeIf { it > 0 },
+                discountLabel = discountLabel?.takeIf { discountCents != null && discountCents > 0 },
             ),
         )
     }

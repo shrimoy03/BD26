@@ -190,6 +190,23 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
 
+                            <!-- Coupons redeemed on the customer terminal -->
+                            <ItemsControl ItemsSource="{Binding Coupons}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="m:Coupon">
+                                        <StackPanel Margin="10,2,10,0">
+                                            <Border BorderBrush="#55534A" BorderThickness="0,1,0,0"
+                                                    Margin="-10,0,-10,3" />
+                                            <DockPanel>
+                                                <TextBlock Text="{Binding Label}" FontSize="16" FontWeight="Bold" />
+                                                <TextBlock Text="{Binding AysAmount}" FontSize="16" FontWeight="Bold"
+                                                           HorizontalAlignment="Right" />
+                                            </DockPanel>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
                             <!-- Tender lines (Complete stage) -->
                             <ItemsControl ItemsSource="{Binding Payments}">
                                 <ItemsControl.ItemTemplate>

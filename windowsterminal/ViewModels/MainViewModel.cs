@@ -150,6 +150,8 @@ public partial class MainViewModel : ViewModelBase
 
     public ObservableCollection<SaleLine> Lines { get; } = new();
     public ObservableCollection<Payment> Payments { get; } = new();
+    /// <summary>Coupons redeemed on the customer terminal (WinkPay offers), applied against the total.</summary>
+    public ObservableCollection<Coupon> Coupons { get; } = new();
 
     private SaleLine? _selected;
 
@@ -251,7 +253,8 @@ public partial class MainViewModel : ViewModelBase
     public decimal Subtotal => Lines.Sum(l => l.Amount);
     public decimal Tax => Math.Round(Subtotal * TaxRate, 2, MidpointRounding.AwayFromZero);
     public decimal Total => Subtotal + Tax;
-    public decimal Balance => Math.Max(0, Total - Payments.Sum(p => p.Amount));
+    public decimal Savings => Coupons.Sum(c => c.Savings);
+    public decimal Balance => Math.Max(0, Total - Savings - Payments.Sum(p => p.Amount));
 
     public string SubtotalDisplay => Subtotal.ToString("N2");
     public string TaxDisplay => Tax.ToString("N2");
@@ -259,7 +262,7 @@ public partial class MainViewModel : ViewModelBase
     public string AmountDueDisplay => Balance.ToString("N2");
     public string PurchItemsLabel => $"Purch Items: {Lines.Count}";
     public bool HasItems => Lines.Count > 0;
-    public string CouponsLabel => "Coupons: 0   Savings: 0.00";
+    public string CouponsLabel => $"Coupons: {Coupons.Count}   Savings: {Savings:N2}";
 
     public string TxnId => $"T-0059-18-{_txnBase}";
 
@@ -971,6 +974,13 @@ public partial class MainViewModel : ViewModelBase
         {
             case "APPROVED":
                 _ = _link!.SendAsync(new PosMessage { Type = PosMessageTypes.ShowThanks });
+                // A coupon redeemed on the terminal arrives with the result;
+                // book it first so the (already discounted) charge balances.
+                if (m.DiscountCents is > 0)
+                {
+                    Coupons.Add(new Coupon(m.DiscountLabel ?? "Coupon", m.DiscountCents.Value / 100m));
+                    Console.WriteLine($"[Register] coupon from terminal: {m.DiscountLabel} -{m.DiscountCents.Value / 100m:N2}");
+                }
                 var amount = m.AmountCents is { } cents ? cents / 100m : Balance;
                 CompleteSale(TenderLabelFor(m.Method), Math.Min(amount, Balance));
                 break;
@@ -1030,6 +1040,7 @@ public partial class MainViewModel : ViewModelBase
         _txnBase++;
         Lines.Clear();
         Payments.Clear();
+        Coupons.Clear();
         CustomerName = null;
         _selected = null;
         ShowItems = false;
@@ -1062,7 +1073,7 @@ public partial class MainViewModel : ViewModelBase
             (long)Math.Round(l.Amount * 100m))).ToArray(),
         SubtotalCents = (long)Math.Round(Subtotal * 100m),
         TaxCents = (long)Math.Round(Tax * 100m),
-        AmountCents = (long)Math.Round(Total * 100m),
+        AmountCents = (long)Math.Round((Total - Savings) * 100m),
     };
 
     private string? _lastCartJson;
