@@ -40,6 +40,11 @@ object Tuning {
         val palmLivenessEnabled: Boolean = true,
         val enableIR: Boolean = false,
         val palmFocusMaskOpacity: Float? = null, // null = adaptive
+        val palmEvBoostEnabled: Boolean = true,  // guarded low-light exposure boost (session driver)
+        val palmLivenessMode: String = "hires",  // hires | gesture | both
+        val palmEngineDriver: String = "session", // session | bridge (rollback)
+        val isFrontCamera: Boolean = true,       // palm camera faces the customer
+        val readWinkConfig: Boolean = false,     // on-device test override file; needs app relaunch
         val debugLogging: Boolean = false,       // needs app relaunch
     )
 
@@ -65,6 +70,11 @@ object Tuning {
             palmLivenessEnabled = p.getBoolean("palmLivenessEnabled", d.palmLivenessEnabled),
             enableIR = p.getBoolean("enableIR", d.enableIR),
             palmFocusMaskOpacity = s("palmFocusMaskOpacity")?.toFloatOrNull(),
+            palmEvBoostEnabled = p.getBoolean("palmEvBoostEnabled", d.palmEvBoostEnabled),
+            palmLivenessMode = s("palmLivenessMode")?.takeIf { it in LIVENESS_MODES } ?: d.palmLivenessMode,
+            palmEngineDriver = s("palmEngineDriver")?.takeIf { it in ENGINE_DRIVERS } ?: d.palmEngineDriver,
+            isFrontCamera = p.getBoolean("isFrontCamera", d.isFrontCamera),
+            readWinkConfig = p.getBoolean("readWinkConfig", d.readWinkConfig),
             debugLogging = p.getBoolean("debugLogging", d.debugLogging),
         )
     }
@@ -88,9 +98,18 @@ object Tuning {
             putBoolean("palmLivenessEnabled", v.palmLivenessEnabled)
             putBoolean("enableIR", v.enableIR)
             putString("palmFocusMaskOpacity", v.palmFocusMaskOpacity?.toString())
+            putBoolean("palmEvBoostEnabled", v.palmEvBoostEnabled)
+            putString("palmLivenessMode", v.palmLivenessMode)
+            putString("palmEngineDriver", v.palmEngineDriver)
+            putBoolean("isFrontCamera", v.isFrontCamera)
+            putBoolean("readWinkConfig", v.readWinkConfig)
             putBoolean("debugLogging", v.debugLogging)
         }.apply()
     }
+
+    /** Allowed values, in the order the Settings spinners list them. */
+    val LIVENESS_MODES = listOf("hires", "gesture", "both")
+    val ENGINE_DRIVERS = listOf("session", "bridge")
 
     fun reset(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
@@ -103,6 +122,11 @@ object Tuning {
         WinkPaySdk.palmLivenessEnabled = v.palmLivenessEnabled
         WinkPaySdk.enableIR = v.enableIR
         WinkPaySdk.palmFocusMaskOpacity = v.palmFocusMaskOpacity
+        WinkPaySdk.palmEvBoostEnabled = v.palmEvBoostEnabled
+        WinkPaySdk.palmLivenessMode = v.palmLivenessMode
+        WinkPaySdk.palmEngineDriver = v.palmEngineDriver
+        WinkPaySdk.isFrontCamera = v.isFrontCamera
+        // readWinkConfig and debugLogging are read at init only.
     }
 
     fun orientationConstant(name: String): Int? = when (name) {

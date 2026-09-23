@@ -38,6 +38,11 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var palmMfaEnabled: SwitchCompat
     private lateinit var debugLogging: SwitchCompat
     private lateinit var registerUrl: EditText
+    private lateinit var palmEvBoostEnabled: SwitchCompat
+    private lateinit var palmLivenessMode: Spinner
+    private lateinit var palmEngineDriver: Spinner
+    private lateinit var isFrontCamera: SwitchCompat
+    private lateinit var readWinkConfig: SwitchCompat
 
     private val rotations = listOf(0, 90, 180, 270)
 
@@ -65,6 +70,11 @@ class SettingsActivity : AppCompatActivity() {
         enableIR = findViewById(R.id.enableIR)
         palmMfaEnabled = findViewById(R.id.palmMfaEnabled)
         debugLogging = findViewById(R.id.debugLogging)
+        palmEvBoostEnabled = findViewById(R.id.palmEvBoostEnabled)
+        palmLivenessMode = spinner(R.id.palmLivenessMode, R.array.palm_liveness_mode_options)
+        palmEngineDriver = spinner(R.id.palmEngineDriver, R.array.palm_engine_driver_options)
+        isFrontCamera = findViewById(R.id.isFrontCamera)
+        readWinkConfig = findViewById(R.id.readWinkConfig)
         registerUrl = findViewById(R.id.registerUrl)
         registerUrl.setText(com.bloomingdales.winkpos.link.RegisterAddress.override(this))
 
@@ -128,6 +138,11 @@ class SettingsActivity : AppCompatActivity() {
         enableIR.isChecked = v.enableIR
         palmMfaEnabled.isChecked = v.palmMfaEnabled
         debugLogging.isChecked = v.debugLogging
+        palmEvBoostEnabled.isChecked = v.palmEvBoostEnabled
+        palmLivenessMode.setSelection(Tuning.LIVENESS_MODES.indexOf(v.palmLivenessMode).coerceAtLeast(0))
+        palmEngineDriver.setSelection(Tuning.ENGINE_DRIVERS.indexOf(v.palmEngineDriver).coerceAtLeast(0))
+        isFrontCamera.isChecked = v.isFrontCamera
+        readWinkConfig.isChecked = v.readWinkConfig
     }
 
     private fun save() {
@@ -160,6 +175,11 @@ class SettingsActivity : AppCompatActivity() {
             palmFocusMaskOpacity = palmFocusMaskOpacity.text.toString().trim()
                 .toFloatOrNull()?.takeIf { it in 0f..1f },
             debugLogging = debugLogging.isChecked,
+            palmEvBoostEnabled = palmEvBoostEnabled.isChecked,
+            palmLivenessMode = Tuning.LIVENESS_MODES[palmLivenessMode.selectedItemPosition],
+            palmEngineDriver = Tuning.ENGINE_DRIVERS[palmEngineDriver.selectedItemPosition],
+            isFrontCamera = isFrontCamera.isChecked,
+            readWinkConfig = readWinkConfig.isChecked,
         )
 
         Tuning.save(this, v)
@@ -172,7 +192,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         bind(v)
 
-        val msg = if (v.debugLogging != before.debugLogging) {
+        val msg = if (v.debugLogging != before.debugLogging || v.readWinkConfig != before.readWinkConfig) {
             R.string.settings_saved_restart
         } else {
             R.string.settings_saved

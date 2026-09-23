@@ -80,9 +80,9 @@
     <string name="settings_saved">Settings saved</string>
     <string name="register_address_label">Register address (blank = discover from the terminal)</string>
     <string name="register_address_hint">ws://192.168.1.50:8181/pos</string>
-    <string name="settings_saved_restart">Settings saved — debugLogging applies after app restart</string>
+    <string name="settings_saved_restart">Settings saved — debugLogging / readWinkConfig apply after app restart</string>
     <string name="settings_reset">Settings reset to defaults</string>
-    <string name="settings_note">Face/Palm values apply to the next check-in. Palm/SDK switches apply live. debugLogging needs an app restart.</string>
+    <string name="settings_note">Face/Palm values apply to the next check-in. Palm/SDK switches apply live, except readWinkConfig and debugLogging (restart).</string>
 
     <!-- Scan screen -->
     <string name="scan_your_face">Scan your face</string>

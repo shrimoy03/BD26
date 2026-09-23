@@ -185,8 +185,26 @@
                     android:text="palmMfaEnabled" />
 
                 <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/palmEvBoostEnabled" style="@style/SettingsSwitch"
+                    android:text="palmEvBoostEnabled (low-light exposure boost)" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/isFrontCamera" style="@style/SettingsSwitch"
+                    android:text="isFrontCamera (palm camera faces the customer)" />
+
+                <TextView style="@style/SettingsLabel" android:text="palmLivenessMode" />
+                <Spinner android:id="@+id/palmLivenessMode" style="@style/SettingsEdit" />
+
+                <TextView style="@style/SettingsLabel" android:text="palmEngineDriver (bridge = rollback)" />
+                <Spinner android:id="@+id/palmEngineDriver" style="@style/SettingsEdit" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/readWinkConfig" style="@style/SettingsSwitch"
+                    android:text="readWinkConfig (on-device test file; restart)" />
+
+                <androidx.appcompat.widget.SwitchCompat
                     android:id="@+id/debugLogging" style="@style/SettingsSwitch"
-                    android:text="debugLogging" />
+                    android:text="debugLogging (restart)" />
 
                 <TextView
                     android:layout_width="match_parent"

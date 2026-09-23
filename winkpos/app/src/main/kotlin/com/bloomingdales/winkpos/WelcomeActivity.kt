@@ -96,6 +96,11 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
                 palmLivenessEnabled = tuning.palmLivenessEnabled,
                 enableIR = tuning.enableIR,
                 palmFocusMaskOpacity = tuning.palmFocusMaskOpacity,
+                palmEvBoostEnabled = tuning.palmEvBoostEnabled,
+                palmLivenessMode = tuning.palmLivenessMode,
+                palmEngineDriver = tuning.palmEngineDriver,
+                isFrontCamera = tuning.isFrontCamera,
+                readWinkConfig = tuning.readWinkConfig,
                 debugLogging = tuning.debugLogging,
             ),
         )
