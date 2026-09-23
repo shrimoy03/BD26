@@ -1006,7 +1006,7 @@ public sealed class JpxRestLink : ITerminalLink
             }
         }
 
-        if (message.Type is not (PosMessageTypes.StartPayment or PosMessageTypes.CancelPayment))
+        if (message.Type is not PosMessageTypes.StartPayment)
         {
             return false;
         }
@@ -1023,7 +1023,45 @@ public sealed class JpxRestLink : ITerminalLink
                 // refused with "card already detected"/"detecting card".
                 await ReleaseContactlessAsync("cancel");
             }
-            await SetForegroundAsync(true);
+
+            // Reclaim the screen AND land on the idle cart form in the same
+            // batch. This used to be two steps — foreground first, then a
+            // DisplayForm of StartTransaction, which only exists in PAX's
+            // custom package — so on the stock package the second step
+            // failed and PxRetailer sat on the payment-options page until the
+            // register's next cart sync repainted it. A customer could tap
+            // Face there and relaunch WinkPay into a sale the register had
+            // just voided. The cart sync that follows the cancel corrects the
+            // form to the secure idle screen if the basket is now empty.
+            var cancelBatch = JsonSerializer.Serialize(new object[]
+            {
+                new
+                {
+                    commandName = "SetVariable",
+                    variables = new[] { new { name = VarForeground, value = "true" } },
+                },
+                new { commandName = "DisplayForm", formName = FormCartIdle },
+            });
+            var cancelled = await PostAsync("/sendBatchCmd", cancelBatch);
+            if (!cancelled)
+            {
+                // PxRetailer transiently refuses right after WinkPay held the
+                // screen; one short retry before falling back to foreground only.
+                await Task.Delay(400);
+                cancelled = await PostAsync("/sendBatchCmd", cancelBatch);
+            }
+            if (cancelled)
+            {
+                _foreground = true;
+                _lastDisplayedForm = FormCartIdle;
+            }
+            else
+            {
+                await SetForegroundAsync(true);
+            }
+            InvalidateCartRender();
+            Console.WriteLine($"[JpxRestLink] cancel — PxRetailer to {FormCartIdle} ok={cancelled}");
+            return cancelled;
         }
 
         // Bankcard: the register drives the EMV contactless read itself over
@@ -1033,10 +1071,7 @@ public sealed class JpxRestLink : ITerminalLink
         // to the idle cart screen.
         var stockMode = _startForm != FormStart;
         var isCard = message.Type == PosMessageTypes.StartPayment && message.Method is "CARD" or "BD_LOYALLIST";
-        var form = message.Type == PosMessageTypes.CancelPayment
-            ? (stockMode ? FormCartIdle : FormStart)
-            : isCard ? FormTapCard
-            : _startForm;
+        var form = isCard ? FormTapCard : _startForm;
 
         // The request mailbox only exists in PAX's custom package. Writing it in
         // stock mode fails every send with "one or more variables could not be
