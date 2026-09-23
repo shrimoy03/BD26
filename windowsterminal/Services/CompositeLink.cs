@@ -51,6 +51,11 @@ public sealed class CompositeLink : ITerminalLink
 
             socketServer.RequiredTerminalHost = pxrrs.TerminalHost;
             socketServer.RequiredTerminalSerial = pxrrs.TerminalSerial;
+
+            // Lost the terminal to another register: push the app off our
+            // socket so it re-discovers the new owner immediately, instead of
+            // waiting for its own (now rare) poll of the terminal.
+            pxrrs.TerminalYielded += () => socketServer.DropClient("terminal claimed by another register");
             pxrrs.TerminalSerialChanged += serial =>
             {
                 socketServer.RequiredTerminalSerial = serial;

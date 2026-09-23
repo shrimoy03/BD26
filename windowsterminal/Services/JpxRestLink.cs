@@ -91,6 +91,22 @@ public sealed class JpxRestLink : ITerminalLink
     /// </summary>
     private volatile bool _yielded;
 
+    /// <summary>Another register took this terminal (see CheckOwnershipAsync).</summary>
+    public event Action? TerminalYielded;
+
+    /// <summary>
+    /// Background cadence. Every PXRRS call costs the terminal (PAX's logger
+    /// fails per write and, on Android 11, drags the media provider along), so
+    /// when the terminal is measured slow the liveness probe backs off —
+    /// 15 s normally, doubling per slow streak up to 2 min — and the probe
+    /// and ownership check are skipped entirely while a sale is in flight.
+    /// A fast call resets the cadence.
+    /// </summary>
+    private volatile int _probeSeconds = ProbeSecondsNormal;
+    private int _slowStreak;
+    private const int ProbeSecondsNormal = 15;
+    private const int ProbeSecondsMax = 120;
+
     /// <summary>
     /// The WinkPay app on the driven terminal holds our WebSocket. Then the
     /// order travels over the socket and the PxRetailer mailbox handshake is
@@ -680,6 +696,16 @@ public sealed class JpxRestLink : ITerminalLink
     {
         while (!ct.IsCancellationRequested)
         {
+            // A sale is in flight (biometric capture or card tender): leave
+            // PXRRS alone — the sale's own calls are the liveness signal, and
+            // a probe queued behind a slow batch only delays the customer.
+            var saleInFlight = _resultPoll is not null || TenderInFlightNow();
+            if (saleInFlight && _connected)
+            {
+                try { await Task.Delay(TimeSpan.FromSeconds(5), ct); } catch (OperationCanceledException) { return; }
+                continue;
+            }
+
             var alive = await ProbeAsync();
 
             if (alive && !_subscribed)
@@ -744,13 +770,18 @@ public sealed class JpxRestLink : ITerminalLink
 
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(15), ct);
+                await Task.Delay(TimeSpan.FromSeconds(_probeSeconds), ct);
             }
             catch (OperationCanceledException)
             {
                 return;
             }
         }
+    }
+
+    private bool TenderInFlightNow()
+    {
+        lock (_tenderLock) return _cardTender is not null;
     }
 
     /// <summary>
@@ -1897,6 +1928,7 @@ public sealed class JpxRestLink : ITerminalLink
             DisarmCardTender($"terminal claimed by {ownerHost}");
             Console.WriteLine($"[JpxRestLink] YIELDED — the register at {ownerHost} has claimed this terminal; ring an item or start a sale here to take it back");
             LinkHealth.Report($"terminal is being driven by the register at {ownerHost} — ring an item or start a sale here to take it back");
+            TerminalYielded?.Invoke();
         }
     }
 
@@ -2100,7 +2132,26 @@ public sealed class JpxRestLink : ITerminalLink
     private void NoteLatency(string what, long startedTickMs)
     {
         var elapsed = Environment.TickCount64 - startedTickMs;
-        if (elapsed <= 1500) return;
+        if (elapsed <= 1500)
+        {
+            // Terminal answering promptly again: restore the normal cadence.
+            if (_slowStreak > 0 || _probeSeconds != ProbeSecondsNormal)
+            {
+                _slowStreak = 0;
+                _probeSeconds = ProbeSecondsNormal;
+                Console.WriteLine("[JpxRestLink] terminal fast again — background cadence back to normal");
+            }
+            return;
+        }
+
+        // Slow: back the background traffic off so PXRRS gets room to drain,
+        // and tell the operator what the register is seeing.
+        _slowStreak++;
+        _probeSeconds = Math.Min(ProbeSecondsMax, ProbeSecondsNormal << Math.Min(_slowStreak, 3));
+        if (_slowStreak >= 2)
+        {
+            LinkHealth.Report($"terminal is slow (PXRRS took {elapsed / 1000.0:F1}s) — background polling backed off to {_probeSeconds}s");
+        }
 
         // Measured causes on the live A380 (2026-09-17/21): PXRRS's logger
         // failure loop aging the process (3–20s), and Android freezing the

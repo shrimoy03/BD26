@@ -165,6 +165,21 @@ public sealed class TerminalLink : ITerminalLink
         }
     }
 
+    /// <summary>
+    /// Drop the connected app on purpose (this register lost the terminal to
+    /// another one). The app reconnects, re-reads the advertised register
+    /// address from its terminal and lands on the new owner — so the app
+    /// itself only needs to poll for the owner rarely.
+    /// </summary>
+    public void DropClient(string reason)
+    {
+        var socket = Interlocked.Exchange(ref _socket, null);
+        if (socket is null) return;
+        Console.WriteLine($"[TerminalLink] dropping client ({reason})");
+        try { socket.Abort(); } catch { /* already gone */ }
+        ClientDisconnected?.Invoke();
+    }
+
     public async Task<bool> SendAsync(PosMessage message)
     {
         var socket = _socket;

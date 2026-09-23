@@ -173,6 +173,7 @@ internal sealed class WebSocketLinkOnPort : ITerminalLink
         get => _link.RequiredTerminalHost;
         set => _link.RequiredTerminalHost = value;
     }
+    public void DropClient(string reason) => _link.DropClient(reason);
     public Task StartAsync() => _link.StartAsync(_port);
     public Task<bool> SendAsync(PosMessage message) => _link.SendAsync(message);
     public ValueTask DisposeAsync() => _link.DisposeAsync();

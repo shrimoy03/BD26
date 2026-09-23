@@ -22,6 +22,8 @@ class WebSocketTransport(
     private val decorate: (String) -> String = { it },
     /** The register at this address refused us (HTTP 403: it drives another terminal). */
     private val onRejected: (String) -> Unit = {},
+    /** An open socket closed; re-run discovery on the next attempt. */
+    private val onLostConnection: () -> Unit = {},
 ) : PosLinkTransport {
 
     constructor(url: String) : this({ listOf(url) })
@@ -119,6 +121,10 @@ class WebSocketTransport(
         if (socket === closed) {
             socket = null
             connectedUrl = null
+            // A register that loses the terminal drops us on purpose; whoever
+            // owns it now is in the terminal's variable — ask again, not the
+            // cached answer.
+            onLostConnection()
             listener?.onDisconnected()
         } else {
             attempt++ // never opened: try the next candidate

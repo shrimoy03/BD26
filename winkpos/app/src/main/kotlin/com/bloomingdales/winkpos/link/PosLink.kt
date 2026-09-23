@@ -95,6 +95,7 @@ object PosLink {
                     onConnectedTo = { url -> RegisterAddress.rememberGood(app, url) },
                     decorate = { url -> RegisterAddress.withIdentity(url) },
                     onRejected = { url -> RegisterAddress.markRejected(url) },
+                    onLostConnection = { RegisterAddress.invalidate() },
                 ).also { ws -> startRegisterWatch(app, ws) }
             }
             // PXRRS requires HTTPS with a client certificate even on loopback,
@@ -340,7 +341,10 @@ object PosLink {
     }
 
     private const val TAG = "PosLink"
-    private const val REGISTER_WATCH_MS = 15_000L
+    // Rare: a register that loses the terminal now drops our socket, and the
+    // reconnect re-discovers the owner. This poll is only the safety net, and
+    // every PXRRS call costs the terminal.
+    private const val REGISTER_WATCH_MS = 60_000L
     private const val CAPTURE_CHANNEL_ID = "winkpay-capture"
     private const val CAPTURE_NOTIFICATION_ID = 42
 

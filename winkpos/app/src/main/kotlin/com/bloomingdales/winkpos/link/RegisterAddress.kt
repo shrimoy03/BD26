@@ -47,6 +47,9 @@ object RegisterAddress {
     private val rejectedUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private const val REJECT_TTL_MS = 60_000L
 
+    /** Forget the cached discovery so the next connect re-asks the terminal who owns it. */
+    fun invalidate() { lastDiscoveryAt = 0L }
+
     /** A register answered 403: it drives another terminal. Skip it for a while and re-discover. */
     fun markRejected(url: String) {
         rejectedUntil[url] = android.os.SystemClock.elapsedRealtime() + REJECT_TTL_MS
