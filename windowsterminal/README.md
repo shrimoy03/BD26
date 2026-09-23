@@ -148,9 +148,13 @@ Press **F9** to open Terminal setup.
 This is the supported way to configure a register — no environment variables and
 no rebuild, so the same published build drops onto every store machine:
 
-- **Connection** — wireless PXRRS, Wi-Fi WebSocket, or USB/PCL.
+- **Connection** — wireless PXRRS (the demo's mode) or the Wi-Fi WebSocket
+  fallback. The USB/PCL transport still exists in code (`POS_TERMINAL_LINK=pcl`)
+  but is no longer offered on this screen.
 - **Terminal** — the PAX device's IP and port, with an HTTPS/mTLS toggle. The
-  resolved REST base is previewed live.
+  resolved REST base is previewed live. Every address the register has been
+  saved against is listed under **Recently connected**; one tap fills it in,
+  so moving the register between PAX units is Setup → tap → Save.
 - **This register** — the callback address PXRRS posts results to. Left blank it
   auto-detects the adapter that actually routes to the terminal, which matters on
   a store PC with several NICs (Windows' `169.254.*` link-local addresses are

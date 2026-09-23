@@ -40,11 +40,6 @@
                                 <TextBlock Text="Cancel" FontSize="13" />
                             </Button>
                             <Button Classes="pos" Height="44" Padding="20,0" Margin="0,0,10,0"
-                                    Command="{Binding TestWinkPayFaceCommand}"
-                                    ToolTip.Tip="Sends START_PAYMENT method=FACE straight to the winkpos app — tests the WinkPay launch without the PxRetailer Face button or the PXRRS subscription.">
-                                <TextBlock Text="Test WinkPay Face" FontSize="13" />
-                            </Button>
-                            <Button Classes="pos" Height="44" Padding="20,0" Margin="0,0,10,0"
                                     Command="{Binding BringRetailerForwardCommand}"
                                     ToolTip.Tip="PxRetailer sometimes launches behind other apps on the PAX — this pushes FOREGROUND=true to bring it back in front.">
                                 <TextBlock Text="Show PxRetailer" FontSize="13" />
@@ -99,8 +94,6 @@
                                          Content="Wireless PXRRS &#8212; REST to the terminal over Wi-Fi / Ethernet" />
                             <RadioButton Classes="pos" GroupName="mode" IsChecked="{Binding Setup.IsWebSocket}"
                                          Content="Wi-Fi WebSocket &#8212; the winkpos app connects in to this register" />
-                            <RadioButton Classes="pos" GroupName="mode" IsChecked="{Binding Setup.IsPcl}"
-                                         Content="USB &#8212; JPxSerialServer raw PCL socket on this PC" />
                         </StackPanel>
 
                         <!-- ===== Terminal address (jpxss) ===== -->
@@ -114,6 +107,27 @@
                                                Foreground="{DynamicResource Dim}" />
                                     <TextBox Classes="pos" PlaceholderText="192.168.1.234"
                                              Text="{Binding Setup.TerminalHost}" />
+                                    <!-- Recently connected: one tap fills the address -->
+                                    <StackPanel Spacing="6" IsVisible="{Binding Setup.HasRecentTerminals}">
+                                        <TextBlock Text="Recently connected" FontSize="11"
+                                                   Foreground="{DynamicResource Dim}" Margin="0,4,0,0" />
+                                        <ItemsControl ItemsSource="{Binding Setup.RecentTerminals}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="x:String">
+                                                    <Button Classes="ghost" Height="30" Padding="12,0" Margin="0,0,8,6"
+                                                            Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).Setup.UseRecentCommand}"
+                                                            CommandParameter="{Binding}">
+                                                        <TextBlock Classes="mono" Text="{Binding}" FontSize="12" />
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
                                 </StackPanel>
                                 <StackPanel Grid.Column="2" Spacing="6">
                                     <TextBlock Text="Port" FontSize="12" Foreground="{DynamicResource Dim}" />
@@ -218,22 +232,6 @@
                                 <TextBlock Text="Port" FontSize="12" Foreground="{DynamicResource Dim}" />
                                 <TextBox Classes="pos" PlaceholderText="8181" Text="{Binding Setup.WebSocketPort}" />
                             </StackPanel>
-                        </StackPanel>
-
-                        <!-- ===== PCL ===== -->
-                        <StackPanel Spacing="12" IsVisible="{Binding Setup.IsPcl}">
-                            <Border Height="1" Background="{DynamicResource Line}" />
-                            <TextBlock Classes="label" Text="JPXSERIALSERVER (USB)" />
-                            <Grid ColumnDefinitions="*,16,150">
-                                <StackPanel Grid.Column="0" Spacing="6">
-                                    <TextBlock Text="Host" FontSize="12" Foreground="{DynamicResource Dim}" />
-                                    <TextBox Classes="pos" PlaceholderText="127.0.0.1" Text="{Binding Setup.PclHost}" />
-                                </StackPanel>
-                                <StackPanel Grid.Column="2" Spacing="6">
-                                    <TextBlock Text="Port" FontSize="12" Foreground="{DynamicResource Dim}" />
-                                    <TextBox Classes="pos" PlaceholderText="7001" Text="{Binding Setup.PclPort}" />
-                                </StackPanel>
-                            </Grid>
                         </StackPanel>
 
                     </StackPanel>

@@ -300,7 +300,7 @@ public partial class MainViewModel : ViewModelBase
                 new TKey(4, "Lookup Account", true),
                 new TKey(5, "Items", true),
                 new TKey(6, "Terminal Setup", true),
-                new TKey(7, "Face Pay (WinkPay direct)", true),
+                new TKey(7, "", false),
                 new TKey(8, "Input Account on Signature Pad", true),
             },
             RegisterStage.Scan => new[]
@@ -323,7 +323,7 @@ public partial class MainViewModel : ViewModelBase
                 new TKey(5, "Gift Card/Rewards Happy Returns", true),
                 new TKey(6, "", false),
                 new TKey(7, "More Payment Methods", true),
-                new TKey(8, "Face Pay (WinkPay direct)", true),
+                new TKey(8, "", false),
             },
             RegisterStage.MorePayments => new[]
             {
@@ -428,8 +428,6 @@ public partial class MainViewModel : ViewModelBase
             case 6:
                 OpenSetup();
                 break;
-            case 7:
-                TestFacePay();
                 break;
         }
     }
@@ -439,12 +437,6 @@ public partial class MainViewModel : ViewModelBase
     /// without waiting on the terminal's Face event. Adds a demo item first so
     /// the amount is not zero. Same path as T8 at checkout.
     /// </summary>
-    private void TestFacePay()
-    {
-        if (Lines.Count == 0) ScanUpc(Catalog[0].Sku);
-        StartCardTender("FACE");
-    }
-
     private void LinkLoyalty()
     {
         CustomerName = "B.TEST";
@@ -496,14 +488,6 @@ public partial class MainViewModel : ViewModelBase
                 break;
             case 7:
                 Stage = RegisterStage.MorePayments;
-                break;
-            case 8:
-                // Test path: skip waiting for the terminal's Face event and
-                // hand the sale straight to WinkPay. CompositeLink sends FACE
-                // to the WebSocket (winkpos launches into face capture) and to
-                // the REST link, which drops PxRetailer's foreground so WinkPay
-                // can take the screen.
-                StartCardTender("FACE");
                 break;
         }
     }
@@ -759,47 +743,6 @@ public partial class MainViewModel : ViewModelBase
             case RegisterStage.SignatureWait:
                 SignatureSecondsLeft = 89; // more time
                 break;
-        }
-    }
-
-    private int _faceTestSeq;
-
-    /// <summary>
-    /// Bench test: launch WinkPay face capture directly (the same
-    /// START_PAYMENT FACE the Face button on PxRetailer would trigger),
-    /// without waiting on the PXRRS subscription. The register does not enter
-    /// a tender for it, so the capture result is ignored.
-    /// </summary>
-    [RelayCommand]
-    private async Task TestWinkPayFaceAsync()
-    {
-        if (IsBusy) return;
-        if (_link is null)
-        {
-            Status = "No terminal link configured";
-            return;
-        }
-        var amount = Balance > 0 ? Balance : 1.00m;
-        var orderId = $"TEST-FACE-{++_faceTestSeq}";
-        Status = "Launching WinkPay face capture…";
-        IsBusy = true;
-        try
-        {
-            var ok = await _link.SendAsync(new PosMessage
-            {
-                Type = PosMessageTypes.StartPayment,
-                OrderId = orderId,
-                AmountCents = (long)Math.Round(amount * 100),
-                Currency = "USD",
-                Method = "FACE",
-            });
-            Status = ok
-                ? $"WinkPay face launch sent · {orderId} · {Money.Format(amount)}"
-                : "Could not reach WinkPay";
-        }
-        finally
-        {
-            IsBusy = false;
         }
     }
 

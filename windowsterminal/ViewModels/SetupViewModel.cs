@@ -103,10 +103,22 @@ public partial class SetupViewModel : ViewModelBase
         set { if (value) Mode = PosSettings.ModeWebSocket; }
     }
 
-    public bool IsPcl
+    /// <summary>Kept for a settings file that still says "pcl"; no longer offered in the UI.</summary>
+    public bool IsPcl => Mode == PosSettings.ModePcl;
+
+    /// <summary>Terminals this register has been pointed at before, most recent first.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<string> RecentTerminals { get; } = new();
+
+    public bool HasRecentTerminals => RecentTerminals.Count > 0;
+
+    /// <summary>One tap on a recent terminal fills the address (wireless PXRRS mode).</summary>
+    [RelayCommand]
+    private void UseRecent(string host)
     {
-        get => Mode == PosSettings.ModePcl;
-        set { if (value) Mode = PosSettings.ModePcl; }
+        if (string.IsNullOrWhiteSpace(host)) return;
+        Mode = PosSettings.ModeJpxss;
+        TerminalHost = host;
+        Rescan();
     }
 
     // ----- previews -----
@@ -190,6 +202,8 @@ public partial class SetupViewModel : ViewModelBase
             Show(true, "Enter the terminal's IP address, e.g. 192.168.1.234");
             return;
         }
+
+        if (draft.LinkMode == PosSettings.ModeJpxss) draft.RememberTerminal(draft.TerminalHost);
 
         try
         {
@@ -302,6 +316,9 @@ public partial class SetupViewModel : ViewModelBase
         WebSocketPort = s.WebSocketPort.ToString();
         PclHost = s.PclHost;
         PclPort = s.PclPort.ToString();
+        RecentTerminals.Clear();
+        foreach (var h in s.RecentTerminals) RecentTerminals.Add(h);
+        OnPropertyChanged(nameof(HasRecentTerminals));
         Rescan();
     }
 

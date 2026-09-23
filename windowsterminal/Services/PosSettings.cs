@@ -40,6 +40,28 @@ public sealed class PosSettings
     /// <summary>websocket | jpxss | pcl — see <c>App.axaml.cs</c>.</summary>
     public string LinkMode { get; set; } = ModeWebSocket;
 
+    /// <summary>
+    /// Terminal addresses this register has been saved against, most recent
+    /// first — the setup screen offers them as one-tap choices so moving the
+    /// register between PAX units needs no retyping.
+    /// </summary>
+    public List<string> RecentTerminals { get; set; } = new();
+
+    public const int MaxRecentTerminals = 6;
+
+    /// <summary>Promote <paramref name="host"/> to the front of the recent list.</summary>
+    public void RememberTerminal(string host)
+    {
+        var h = host.Trim();
+        if (h.Length == 0) return;
+        RecentTerminals.RemoveAll(x => string.Equals(x, h, StringComparison.OrdinalIgnoreCase));
+        RecentTerminals.Insert(0, h);
+        if (RecentTerminals.Count > MaxRecentTerminals)
+        {
+            RecentTerminals.RemoveRange(MaxRecentTerminals, RecentTerminals.Count - MaxRecentTerminals);
+        }
+    }
+
     // ----- jpxss mode: PXRRS on the terminal, or JPxSerialServer on this PC -----
 
     /// <summary>
