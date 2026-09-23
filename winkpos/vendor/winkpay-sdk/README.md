@@ -5,7 +5,7 @@ WinkPay is a biometric (face + palm) payment SDK for Android POS applications. T
 You add a single dependency:
 
 ```
-com.wink:winkpay-sdk:1.7.9
+com.wink:winkpay-sdk:1.7.11
 ```
 
 It is delivered as a local Maven repository (a directory tree, shipped in the SDK zip) that contains **two** artifacts: `com.wink:winkpay-sdk` and its palm-capture engine `com.palmid:palmid-core`. You only declare `winkpay-sdk` — the palm engine resolves **transitively** from the same repo (see §2). There is no second dependency line to add.
@@ -69,7 +69,7 @@ dependencyResolutionManagement {
 android {
     defaultConfig {
         minSdk = 24
-        ndk { abiFilters += "arm64-v8a" }   // 64-bit POS hardware; add "armeabi-v7a" too for mixed/32-bit fleets — see §8.2
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }   // palm runs on both; drop the one your fleet never uses — see §8.2
     }
 
     packaging {
@@ -80,13 +80,13 @@ android {
 }
 
 dependencies {
-    implementation("com.wink:winkpay-sdk:1.7.9")
+    implementation("com.wink:winkpay-sdk:1.7.11")
 }
 ```
 
 That single line pulls in everything the SDK needs at runtime — the networking, camera, biometric, and UI components, plus the palm-capture engine (`com.palmid:palmid-core`, which carries the native palm libraries) — as transitive dependencies. You do not declare any of them yourself.
 
-> **Mirrored / enterprise repos:** if your build proxies dependencies through an internal Nexus/Artifactory or enforces an artifact allowlist, note that the palm engine is a distinct transitive coordinate — `com.palmid:palmid-core:2.0.0` — that must also be mirrored/allowed. It's already inside the vendored repo above, so a normal local-repo integration needs nothing extra; this only matters if you re-host artifacts internally.
+> **Mirrored / enterprise repos:** if your build proxies dependencies through an internal Nexus/Artifactory or enforces an artifact allowlist, note that the palm engine is a distinct transitive coordinate — `com.palmid:palmid-core:2.1.0` — that must also be mirrored/allowed. It's already inside the vendored repo above, so a normal local-repo integration needs nothing extra; this only matters if you re-host artifacts internally.
 
 > **CameraX 1.4+ is required for palm capture.** The SDK depends on CameraX **1.4.1** (`camera-core`, `camera-camera2`, `camera-lifecycle`, `camera-view`), resolved transitively like everything else. The palm engine calls `ProcessCameraProvider` APIs that don't exist in CameraX 1.3.x — if your build forces CameraX below 1.4 (a direct dependency on an older version, a BOM, or a `resolutionStrategy`/dependency-constraint pin), the app builds fine but **crashes with `NoSuchFieldError` the moment palm capture starts**. Let the SDK's transitive 1.4.1 win, or depend on something newer yourself; never pin CameraX below 1.4.
 
@@ -189,7 +189,7 @@ That's the whole integration. Everything below is reference material.
 | `compileSdk` / `targetSdk` | 34+                      | AndroidX compatibility                                                                |
 | Java toolchain             | 11+                      | —                                                                                     |
 | CameraX                    | **1.4+** (SDK ships 1.4.1) | Resolved transitively — nothing to declare. Do **not** pin CameraX below 1.4: palm capture crashes at start (see the callout in §1.2) |
-| Device ABI                 | **arm64-v8a** (palm) / **armeabi-v7a** (face-only) | One distribution for all hardware. The palm engine is arm64-v8a only; 32-bit devices install fine and run face-only (palm gates off — §8.2). x86_64 emulators are not supported |
+| Device ABI                 | **arm64-v8a** or **armeabi-v7a** | One distribution for all hardware; palm and face run on both 64-bit and 32-bit ARM devices (§8.2). x86/x86_64 emulators are not supported |
 
 > **`useLegacyPackaging = true` is mandatory.** Without it, the palm engine's native libraries stay inside `base.apk` instead of being extracted to `lib/<abi>/`, and the SDK fails to initialize at runtime. AGP 8 makes legacy packaging opt-in.
 
@@ -238,6 +238,7 @@ WinkPaySdk.Config(
     isFrontCamera:        Boolean = true,      // camera faces the customer
     palmTrackingOverlay:  Boolean = false,     // live tracked-palm guidance box
     palmFocusMaskOpacity: Float?  = null,      // fixed focus-mask darkness (null = adaptive)
+    palmEvBoostEnabled:   Boolean = true,      // guarded low-light exposure boost — see below
     enableHttpsServer:    Boolean = false,
     serverPort:           Int     = 8443,
     readWinkConfig:       Boolean = false,    // on-device test override; see below
@@ -260,6 +261,7 @@ WinkPaySdk.Config(
 | `isFrontCamera`        | `true`    | Physical geometry of the palm-capture camera relative to the customer. `true` (default): the camera **faces** the customer — selfie geometry. This is every POS customer display, *including* devices that report their customer-facing camera as `LENS_FACING_BACK` (Clover C505, Elo Pay 7), which is why this is declared by the host rather than derived from the bound lens. `false`: a true rear camera pointing **away** from the customer (the hand hovers behind a handheld device) — the SDK then stops mirroring the left/right "Move hand …" guidance (and its direction arrows) and the gesture-prompt hand artwork, which would otherwise be backwards in that geometry. Also settable at runtime via `WinkPaySdk.isFrontCamera`. |
 | `palmTrackingOverlay`  | `false`   | Live tracked-palm guidance overlay on the palm capture screen: a yellow square follows the customer's palm (sized to it) with a center arrow pointing at the guide frame; the frame renders white, and both turn green on alignment. Default off — the overlay's palm-position registration doesn't hold on some small devices. When off, the screen keeps the classic guidance (gold frame turning green, instruction text, edge direction hints). |
 | `palmFocusMaskOpacity` | `null`    | Darkness of the focus mask outside the palm guide frame, `0.0`–`1.0`. `null` (default): adaptive — 0.85, dropping to 0.55 when the low-light fill light activates (there the screen's glow is helping the camera see the palm, and the mask would hold it back). `0f`: no darkening at all — for devices permanently installed in dim venues, where every bit of display glow helps. Any other value: fixed opacity; the adaptive lightening is disabled. |
+| `palmEvBoostEnabled`   | `true`    | Guarded auto-exposure boost on the default `"session"` palm driver. When the palm scene reads dark (low preview luma, or the engine asks for more light), the SDK escalates camera exposure compensation in small rate-limited steps and decays it once the scene recovers — never during a liveness challenge. The first boost on any device is verified: if a positive exposure step makes the preview *darker* (a known camera-firmware defect on some devices), the SDK reverts immediately and permanently disables exposure boosts on that device. Set `false` to disable the mechanism outright — e.g. if you observe exposure oscillation on your hardware. |
 | `enableHttpsServer`    | `false`   | Starts the local HTTPS server on `serverPort` for the wireless POS integration path. Off by default — enabling it costs ~30–50 MB of RAM.                                                                                        |
 | `serverPort`           | `8443`    | TCP port for the wireless server.                                                                                                                                                                                                |
 | `readWinkConfig`       | `false`   | When `true`, the SDK reads an on-device config file at init and lets it override the camera index and rotation values you pass in the request. Intended for **on-device testing only** — leave `false` in production. Missing or malformed file falls back silently to the request values. |
@@ -758,14 +760,14 @@ Earlier previews of this guide described an optional **server-assisted** palm ca
 
 ### 8.2 Palm engine packaging & ABI support
 
-The palm engine ships as a separate Maven artifact, `com.palmid:palmid-core:2.0.0`, bundled inside the same distribution repo as `com.wink:winkpay-sdk` and declared as a dependency in its POM — Gradle resolves it automatically as long as your `repositories` block points at the unzipped `winkpay-sdk-repo` (§2). No extra integration step.
+The palm engine ships as a separate Maven artifact, `com.palmid:palmid-core:2.1.0`, bundled inside the same distribution repo as `com.wink:winkpay-sdk` and declared as a dependency in its POM — Gradle resolves it automatically as long as your `repositories` block points at the unzipped `winkpay-sdk-repo` (§2). No extra integration step.
 
-The engine's native libs are **arm64-v8a only** (~19 MB). The winkpay-sdk AAR additionally carries a tiny ABI stub for armeabi-v7a so the final APK stays installable on 32-bit POS hardware (PAX A920, Ingenico DX8000):
+Since SDK 1.7.11 (engine 2.1.0) the engine's native libs ship for **both arm64-v8a and armeabi-v7a** (~19 MB / ~18 MB uncompressed respectively), so palm capture runs on 32-bit POS hardware (PAX A920, Ingenico DX8000) as well as 64-bit. Earlier SDK versions bundled an arm64-only engine and gated palm off on 32-bit devices.
 
-* **64-bit devices** — palm works normally.
-* **32-bit devices** — the app installs and face flows work normally, but palm gates off: palm requests fail explicitly with `PALM_UNSUPPORTED` (§9.1), and the palm tiles/options are hidden. The SDK detects this at runtime and never crashes on a palm attempt.
+* **64-bit and 32-bit ARM devices** — palm works normally. The SDK loads the engine build matching the ABI your app's process runs as.
+* **Unsupported processes** — x86/x86_64 emulators, or an ARM device whose APK lacks the engine libs for its process ABI (your `abiFilters` excluded it): palm gates off. Palm requests fail explicitly with `PALM_UNSUPPORTED` (§9.1), the palm tiles/options are hidden, and the SDK never crashes on a palm attempt.
 
-There is now **one distribution** for all hardware — the former separate 32-bit (`-arm32`) zip is discontinued, because the palm engine has no armeabi-v7a build. The same deliverable installs on both 64-bit and 32-bit devices; palm simply gates off on 32-bit.
+There is **one distribution** for all hardware. Include both ABIs in `abiFilters` for mixed fleets, or just the one your fleet uses (§10.2).
 
 ***
 
@@ -780,7 +782,7 @@ The native flow produces the following error codes:
 | `LIVENESS_FAILED`    | The biometric session failed because liveness was rejected (face or palm). The user-visible message contains `"liveness check"` — `"Liveness check failed"` for face (and the `"bridge"` palm driver), or `"Palm liveness check failed. Please try again."` for the default palm driver, after its 4 in-place attempts (§8). |
 | `USER_NOT_ENROLLED`  | Face/palm capture succeeded but no enrolled user matched. Only delivered when the host opted out of in-SDK enrollment (e.g. check-in flows on merchants that don't offer lite registration). The accompanying message is a fixed "not enrolled" string. |
 | `PROFILE_INCOMPLETE` | The matched user exists but their profile is missing fields the backend requires before continuing. Message is a fixed string from the SDK — the BE response itself is generic, so the SDK substitutes a clearer one.                                  |
-| `PALM_UNSUPPORTED`   | A palm flow (`PAY_PALM`, `PAY`, or check-in with `biometricType = "palm"`) was requested on a device whose hardware does not support palm capture, **or** whose process bitness doesn't match the palm-engine ABI bundled in the SDK variant (see §8.2). Delivered immediately, before any UI is shown. Message: `"Palm biometrics aren't supported on this device. Please use face capture instead."` Hosts that want a face-only fallback should re-issue the request as `PAY_FACE`. |
+| `PALM_UNSUPPORTED`   | A palm flow (`PAY_PALM`, `PAY`, or check-in with `biometricType = "palm"`) was requested on a device whose hardware does not support palm capture, **or** whose APK lacks the palm-engine natives for its process ABI — non-ARM emulator or an `abiFilters` that excluded it (see §8.2). Delivered immediately, before any UI is shown. Message: `"Palm biometrics aren't supported on this device. Please use face capture instead."` Hosts that want a face-only fallback should re-issue the request as `PAY_FACE`. |
 | `PAYMENT_FAILED`     | The customer authenticated successfully but the charge itself failed — processor decline or payment-service error. The `errorMessage` carries the decline reason where the server supplies one (e.g. "Insufficient funds"). The in-SDK failure screen shows "Payment unsuccessful" for these instead of the authentication-failure copy. |
 | `AUTH_FAILED`        | Any other terminal authentication failure: face not recognized, server error, network error, etc. The `errorMessage` carries the human-readable reason (server-supplied where available, otherwise face-friendly — see §9.2). |
 
@@ -849,16 +851,16 @@ If you minify your app and see R8 warnings about _other_ transitive dependencies
 
 ### 10.2 APK size impact
 
-The SDK adds roughly **12 MB compressed** to your APK, almost entirely the palm engine (`com.palmid:palmid-core`, arm64-v8a `libPalmAPISaas.so` ~19 MB uncompressed — see §8.2). The `winkpay-sdk` AAR itself is ~2 MB. The face-detection model is delivered on-device at runtime by the platform — zero APK cost.
+The SDK adds roughly **12 MB compressed per ABI** to your APK, almost entirely the palm engine (`com.palmid:palmid-core`, `libPalmAPISaas.so` ~19 MB uncompressed on arm64-v8a, ~18 MB on armeabi-v7a — see §8.2). An APK that includes both ABIs pays for both. The `winkpay-sdk` AAR itself is ~2 MB. The face-detection model is delivered on-device at runtime by the platform — zero APK cost.
 
 To keep the build lean:
 
-* **64-bit POS hardware** — set `ndk.abiFilters += "arm64-v8a"`; including other ABIs just inflates your APK with the armeabi-v7a stub that carries no engine.
-* **Mixed / 32-bit fleets** — set `ndk.abiFilters += listOf("arm64-v8a", "armeabi-v7a")` so the one APK installs everywhere; palm runs on the 64-bit devices and gates off on the 32-bit ones (§8.2).
+* **Single-ABI fleets** — set `ndk.abiFilters += "arm64-v8a"` (or `"armeabi-v7a"` for an all-32-bit fleet); the other engine build is left out of the APK.
+* **Mixed fleets** — set `ndk.abiFilters += listOf("arm64-v8a", "armeabi-v7a")` so the one APK installs everywhere and palm runs on every device (§8.2). Per-ABI APK splits or an App Bundle keep the per-device download at one engine.
 
 ### 10.3 Versioning
 
-Maven coordinates are `com.wink:winkpay-sdk:<version>`. The current recommended version is **`1.7.9`**. The SDK versioning convention is:
+Maven coordinates are `com.wink:winkpay-sdk:<version>`. The current recommended version is **`1.7.11`**. The SDK versioning convention is:
 
 * `1.x.0` — feature releases
 * `1.x.y` — bug-fix releases
@@ -880,4 +882,4 @@ When you upgrade the SDK, swap the version in `app/build.gradle.kts` and copy th
 | Payment succeeds but `winkCardToken` / `transactionId` is null in the result                         | Mode confusion: `returnExternalTokens=true` populates `winkCardToken` and leaves `transactionId` null; `returnExternalTokens=false` does the opposite                                                                       | Read §4.7 — pick the mode that matches who is processing the charge.                                                                                                                                  |
 | Palm liveness consistently fails for a real user on a real device                                    | The palm engine's liveness verifier is rejecting (or, on the `"bridge"` driver, one of the SDK's local liveness guards)                                                                                                     | Enable SDK logging (`Config(debugLogging = true)` or `adb shell setprop log.tag.<TAG> DEBUG`), then capture logcat with the palm tag for your driver — **`PalmIdSessionCapture`** (default `"session"` driver) or `PalmCaptureSession` (`"bridge"`). Each reject logs the precise reason. If you see false rejects in normal use, file a bug with the log excerpt. |
 | `INSTALL_FAILED_INVALID_APK: Failed to extract native libraries, res=-2` on `adb install`            | Same root cause as the native-library load error above                                                                                                                                                                      | `useLegacyPackaging = true`.                                                                                                                                                                          |
-| Palm requests fail with `PALM_UNSUPPORTED` | The device (or the process) is 32-bit — the palm engine is arm64-v8a only, so palm gates off and face-only remains available. Genuinely 32-bit POS hardware (PAX A920, Ingenico DX8000) always hits this | Expected on 32-bit hardware; there is no 32-bit palm engine. On a 64-bit device, ensure your app isn't forced into a 32-bit process (don't restrict `abiFilters` to armeabi-v7a only). See §8.2. |
+| Palm requests fail with `PALM_UNSUPPORTED` | The engine libs for this process's ABI are not in the APK — usually `abiFilters` lists only the other ABI (e.g. arm64-only filters on a 32-bit PAX A920 / Ingenico DX8000), or the device is an x86 emulator | Add the device's ABI to `abiFilters` (both `arm64-v8a` and `armeabi-v7a` for mixed fleets) and confirm `useLegacyPackaging = true`. See §8.2 and §10.2. |
