@@ -64,6 +64,9 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
 
     /** Pending autopay charge; cleared if the register cancels during the confirmation beat. */
     private var autoPayRunnable: Runnable? = null
+
+    /** The card this sale charges: the autopay card when autopay applies, else the preferred card. */
+    private var chargeCard: CheckinSession.Card? = null
     private lateinit var cartBadge: TextView
     private lateinit var payButton: Button
     private lateinit var orderTitle: TextView
@@ -165,9 +168,10 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         // Autopay: the customer opted this card in (or Settings forces it), so a
         // register sale skips the confirmation page. The processing screen
         // names the customer and the card for a moment, then the charge runs.
-        val card = CheckinSession.preferredCard
-        if (openedForRegisterSale && card != null && autoPayEnabled(card)) {
-            startAutoPay(card)
+        val autoCard = autoPayCardFor(CheckinSession.cards)
+        if (openedForRegisterSale && autoCard != null) {
+            chargeCard = autoCard
+            startAutoPay(autoCard)
         }
 
         // Swallow Back while a charge is in flight — leaving mid-payment could
@@ -354,11 +358,16 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         )
     }
 
-    private fun autoPayEnabled(card: CheckinSession.Card): Boolean =
+    /**
+     * Which card autopays this sale, or null to show the confirmation page.
+     * "card" mode follows the backend's isAutoPayOn flag exactly as the SDK's
+     * own native flow does; "always" is the demo override; "off" disables it.
+     */
+    private fun autoPayCardFor(cards: List<CheckinSession.Card>): CheckinSession.Card? =
         when (Tuning.load(this).autoPayMode) {
-            "always" -> true
-            "off" -> false
-            else -> card.autoPay
+            "always" -> CheckinSession.preferredCard
+            "off" -> null
+            else -> CheckinSession.autoPayCard
         }
 
     /** Show the processing screen with who/what is being charged, then charge after a short beat. */
@@ -386,7 +395,7 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
     }
 
     private fun pay() {
-        val card = CheckinSession.preferredCard ?: return
+        val card = chargeCard ?: CheckinSession.preferredCard ?: return
         if (paying || totalCents <= 0) return
         paying = true
         payButton.text = getString(R.string.processing)

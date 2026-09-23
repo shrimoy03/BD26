@@ -16,7 +16,7 @@ object CheckinSession {
         val issuer: String,
         val isDefault: Boolean,
         val isExpired: Boolean,
-        /** Customer opted this card into autopay: charge without the confirmation page. */
+        /** `isAutoPayOn` on the card record: the customer opted this card into autopay. */
         val autoPay: Boolean = false,
     ) {
         /** Last 4 digits pulled out of the alias (e.g. "**** 1234" -> "1234"). */
@@ -46,6 +46,14 @@ object CheckinSession {
     val preferredCard: Card?
         get() = cards.firstOrNull { it.isDefault && !it.isExpired }
             ?: cards.firstOrNull { !it.isExpired }
+
+    /**
+     * The card an autopay sale charges. Same rule as the SDK's own native flow
+     * (WinkPayNativeActivity: `cards.firstOrNull { it.isAutoPayOn }`), minus
+     * expired cards — better a confirmation page than a guaranteed decline.
+     */
+    val autoPayCard: Card?
+        get() = cards.firstOrNull { it.autoPay && !it.isExpired }
 
     val isActive: Boolean get() = firstName.isNotEmpty() || cards.isNotEmpty()
 
@@ -87,24 +95,11 @@ object CheckinSession {
                     issuer = c.optString("issuer"),
                     isDefault = c.optBoolean("isDefault", false),
                     isExpired = c.optBoolean("isExpired", false),
-                    autoPay = readAutoPay(c),
+                    autoPay = c.optBoolean("isAutoPayOn", false),
                 )
             }
         }
         cards = parsed
-    }
-
-    /**
-     * The backend's name for the card-level autopay opt-in is not pinned down
-     * yet; accept the plausible spellings, as a boolean or a "true" string.
-     */
-    private fun readAutoPay(c: JSONObject): Boolean {
-        for (key in listOf("autoPay", "autopay", "isAutoPay", "autoPayEnabled", "autoPayment")) {
-            if (!c.has(key)) continue
-            if (c.optBoolean(key, false)) return true
-            if (c.optString(key).equals("true", ignoreCase = true)) return true
-        }
-        return false
     }
 
     fun clear() {
