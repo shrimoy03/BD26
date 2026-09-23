@@ -5,7 +5,7 @@ WinkPay is a biometric (face + palm) payment SDK for Android POS applications. T
 You add a single dependency:
 
 ```
-com.wink:winkpay-sdk:1.7.11
+com.wink:winkpay-sdk:1.7.12
 ```
 
 It is delivered as a local Maven repository (a directory tree, shipped in the SDK zip) that contains **two** artifacts: `com.wink:winkpay-sdk` and its palm-capture engine `com.palmid:palmid-core`. You only declare `winkpay-sdk` — the palm engine resolves **transitively** from the same repo (see §2). There is no second dependency line to add.
@@ -80,7 +80,7 @@ android {
 }
 
 dependencies {
-    implementation("com.wink:winkpay-sdk:1.7.11")
+    implementation("com.wink:winkpay-sdk:1.7.12")
 }
 ```
 
@@ -782,6 +782,7 @@ The native flow produces the following error codes:
 | `LIVENESS_FAILED`    | The biometric session failed because liveness was rejected (face or palm). The user-visible message contains `"liveness check"` — `"Liveness check failed"` for face (and the `"bridge"` palm driver), or `"Palm liveness check failed. Please try again."` for the default palm driver, after its 4 in-place attempts (§8). |
 | `USER_NOT_ENROLLED`  | Face/palm capture succeeded but no enrolled user matched. Only delivered when the host opted out of in-SDK enrollment (e.g. check-in flows on merchants that don't offer lite registration). The accompanying message is a fixed "not enrolled" string. |
 | `PROFILE_INCOMPLETE` | The matched user exists but their profile is missing fields the backend requires before continuing. Message is a fixed string from the SDK — the BE response itself is generic, so the SDK substitutes a clearer one.                                  |
+| `CAMERA_UNAVAILABLE` | The face camera could not be opened, or opened but never delivered a frame, and the session's automatic recovery (unbind + rebind, three attempts ~750 ms apart, plus a 6 s first-frame watchdog) did not help. Typical causes: another client holds the camera, the device HAL is still tearing down the previous session (seen on PAX A380 when a capture is cancelled and relaunched within ~1.5 s), or the camera is disabled by policy. With `returnOnFailure` the host gets this code; otherwise the SDK shows its retry screen. Before 1.7.12 this case was silent: the "Initializing Camera…" overlay stayed until the 30 s capture timeout, whose check-in-mode cancel path re-mounted the capture and bound the same camera again. |
 | `PALM_UNSUPPORTED`   | A palm flow (`PAY_PALM`, `PAY`, or check-in with `biometricType = "palm"`) was requested on a device whose hardware does not support palm capture, **or** whose APK lacks the palm-engine natives for its process ABI — non-ARM emulator or an `abiFilters` that excluded it (see §8.2). Delivered immediately, before any UI is shown. Message: `"Palm biometrics aren't supported on this device. Please use face capture instead."` Hosts that want a face-only fallback should re-issue the request as `PAY_FACE`. |
 | `PAYMENT_FAILED`     | The customer authenticated successfully but the charge itself failed — processor decline or payment-service error. The `errorMessage` carries the decline reason where the server supplies one (e.g. "Insufficient funds"). The in-SDK failure screen shows "Payment unsuccessful" for these instead of the authentication-failure copy. |
 | `AUTH_FAILED`        | Any other terminal authentication failure: face not recognized, server error, network error, etc. The `errorMessage` carries the human-readable reason (server-supplied where available, otherwise face-friendly — see §9.2). |

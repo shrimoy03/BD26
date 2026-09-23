@@ -4,7 +4,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.wink</groupId>
   <artifactId>winkpay-sdk</artifactId>
-  <version>1.7.11</version>
+  <version>1.7.12</version>
   <packaging>aar</packaging>
   <name>WinkPay SDK</name>
   <description>Embedded biometric payment SDK for Android</description>
