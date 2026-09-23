@@ -57,7 +57,7 @@
     <string name="payment_failed">There was a problem processing your payment.</string>
     <string name="reward_applied">$10.00 Reward applied</string>
     <string name="coupon_line">Beauty 15% Off</string>
-    <string name="coupon_applied">Beauty 15% off applied — you save %1$s</string>
+    <string name="coupon_applied">Beauty 15%% off applied — you save %1$s</string>
     <string name="coupon_already_applied">The 15% offer is already applied.</string>
     <string name="coupon_needs_items">Nothing to discount yet.</string>
     <string name="reward_needs_items">Scan items before redeeming the Reward.</string>
