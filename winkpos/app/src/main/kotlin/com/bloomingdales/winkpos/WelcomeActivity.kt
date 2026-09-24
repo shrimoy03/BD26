@@ -183,7 +183,9 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
         // the amount. Re-seed the singleton from it — the Dashboard reads the
         // amount from RegisterSale and its Pay button charges that figure.
         if (!intentOrderId.isNullOrBlank() && intentAmount > 0L) {
-            PosLink.RegisterSale.set(intentOrderId, intentAmount)
+            // Re-seeding must not drop check-in mode for the same order.
+            val checkin = PosLink.RegisterSale.checkin && PosLink.RegisterSale.orderId == intentOrderId
+            PosLink.RegisterSale.set(intentOrderId, intentAmount, checkin)
         }
         val orderId = PosLink.RegisterSale.orderId
         val amount = PosLink.RegisterSale.amountCents
@@ -267,10 +269,14 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
         val sale = PosLink.RegisterSale
         if (sale.isPending) {
             showingRegisterPrompt = true
-            statusText.text = getString(
-                R.string.register_sale_prompt,
-                String.format(java.util.Locale.US, "$%,.2f", sale.amountCents / 100.0),
-            )
+            statusText.text = if (sale.checkin) {
+                getString(R.string.checkin_prompt)
+            } else {
+                getString(
+                    R.string.register_sale_prompt,
+                    String.format(java.util.Locale.US, "$%,.2f", sale.amountCents / 100.0),
+                )
+            }
             statusText.visibility = View.VISIBLE
         } else if (showingRegisterPrompt) {
             showingRegisterPrompt = false

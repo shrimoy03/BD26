@@ -114,6 +114,13 @@ public sealed class CompositeLink : ITerminalLink
             case PosMessageTypes.ShowThanks:
             case PosMessageTypes.ShowRetailer:
                 return await _rest.SendAsync(message);
+            // Check-in mode: WinkPay owns the customer screen while the cashier
+            // rings, so the live cart goes to the app only — a REST cart sync
+            // would repaint PxRetailer over it. The completion order is for
+            // the app alone as well.
+            case PosMessageTypes.CompletePayment:
+            case PosMessageTypes.DisplayCart when message.Checkin == true:
+                return await _ws.SendAsync(message);
             case PosMessageTypes.CancelPayment:
             case PosMessageTypes.DisplayCart:
             default:

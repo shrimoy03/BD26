@@ -67,9 +67,31 @@ Every frame is one JSON object (camelCase). See `Models/PosMessages.cs`.
 | Direction | type | fields |
 |---|---|---|
 | Android → POS | `HELLO` | — (optional greeting on connect) |
-| POS → Android | `START_PAYMENT` | `orderId`, `amountCents`, `currency` |
+| POS → Android | `START_PAYMENT` | `orderId`, `amountCents`, `currency`, `method?`, `checkin?` (true = check-in mode: identify now, charge later) |
+| POS → Android | `DISPLAY_CART` | basket mirror; with `checkin: true` it is the live amount for a check-in in progress and goes to the app only |
+| POS → Android | `COMPLETE_PAYMENT` | `orderId`, `amountCents` — check-in mode: the cashier pressed Complete Payment, charge now |
 | POS → Android | `CANCEL_PAYMENT` | `orderId` |
+| Android → POS | `CHECKIN_READY` | `orderId`, `method?`, `customerLabel` — check-in mode: biometric passed, WinkPay is holding with no Pay button |
 | Android → POS | `PAYMENT_RESULT` | `orderId`, `status` (`APPROVED` \| `DECLINED` \| `CANCELLED`), `amountCents?` (what was charged), `method?` (shown as the tender label), `reason?` (shown on decline), `discountCents?` + `discountLabel?` (a coupon the customer redeemed on the terminal, already deducted from `amountCents`; the register books it as a coupon line so the sale balances) |
+
+### Check-in mode (customer identifies first)
+
+PxRetailer's `SecureBackgroundScreen` has a **Check in** button that fires
+`IS_TRANS_STARTED=checkin`. The register then shows the payment-options form
+(Face / Palm) **without opening a tender** — the cashier keeps ringing in the
+Loyalty/Scan stages. The customer's Face or Palm press launches WinkPay with
+`START_PAYMENT { checkin: true }` and whatever is rung so far (possibly $0).
+While the check-in is active every cart sync is sent to the app only
+(`DISPLAY_CART { checkin: true }`), so the amount on the payment confirmation
+page moves in real time and PxRetailer is never repainted over WinkPay. After
+the scan the app reports `CHECKIN_READY` (shown in the status bar) and hides
+its Pay button. The cashier ends the sale with **Complete Payment (WinkPay)**
+(T2 on Checkout, T8 on Scan) → `COMPLETE_PAYMENT` → the app charges the
+autopay/preferred card and answers with the usual `PAYMENT_RESULT`. Complete
+is refused until the scan is done and the balance is above zero. New Sale /
+F3 cancels an unfinished check-in (`CANCEL_PAYMENT`); a customer who cancels
+in WinkPay drops the register back to the normal flow with the basket intact.
+The pay-after-ringing flow (Biometric Pay) is unchanged.
 
 Behavior on the register:
 - **T1 Bloomingdale's Card / Bloomingdale's Pay** (checkout) sends

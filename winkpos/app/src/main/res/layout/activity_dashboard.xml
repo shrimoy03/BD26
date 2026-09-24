@@ -647,6 +647,19 @@
                     android:textSize="18sp" />
             </LinearLayout>
 
+            <TextView
+                android:id="@+id/checkinNote"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:padding="10dp"
+                android:background="@drawable/bg_btn_disabled"
+                android:text="@string/checkin_note"
+                android:textColor="@color/white"
+                android:textSize="15sp"
+                android:visibility="gone" />
+
             <Button
                 android:id="@+id/payButton"
                 style="@style/Widget.AppCompat.Button.Borderless"
