@@ -307,6 +307,12 @@ public partial class MainViewModel : ViewModelBase
 
     public IReadOnlyList<TKey> TKeys => BuildTKeys();
 
+    /// <summary>Check-in mode T-key row: blank except Complete Payment at <paramref name="slot"/>.</summary>
+    private static TKey[] OnlyCompletePayment(int slot, bool enabled) =>
+        Enumerable.Range(1, 8)
+            .Select(i => i == slot ? new TKey(i, "Complete Payment (WinkPay)", enabled) : new TKey(i, "", false))
+            .ToArray();
+
     private IReadOnlyList<TKey> BuildTKeys()
     {
         var hasItems = Lines.Count > 0;
@@ -314,15 +320,21 @@ public partial class MainViewModel : ViewModelBase
         {
             RegisterStage.Loyalty => new[]
             {
-                new TKey(1, "Lookup Loyalty Number", true),
-                new TKey(2, "Enroll in Loyalty", true),
-                new TKey(3, "Apply for New Account", true),
-                new TKey(4, "Lookup Account", true),
+                // Lookups / enrolment / account keys are display-only in the
+                // demo — shown for fidelity, never clickable.
+                new TKey(1, "Lookup Loyalty Number", false),
+                new TKey(2, "Enroll in Loyalty", false),
+                new TKey(3, "Apply for New Account", false),
+                new TKey(4, "Lookup Account", false),
                 new TKey(5, "Items", true),
                 new TKey(6, "Terminal Setup", true),
                 new TKey(7, "", false),
-                new TKey(8, "Input Account on Signature Pad", true),
+                new TKey(8, "Input Account on Signature Pad", false),
             },
+            // Check-in mode: the customer is identified and waiting; the only
+            // key that matters is the one that settles with WinkPay.
+            RegisterStage.Scan when IsCheckinActive => OnlyCompletePayment(8, hasItems),
+            RegisterStage.Checkout when IsCheckinActive => OnlyCompletePayment(2, hasItems),
             RegisterStage.Scan => new[]
             {
                 new TKey(1, "Checkout", hasItems),
@@ -331,22 +343,18 @@ public partial class MainViewModel : ViewModelBase
                 new TKey(4, "Add Gift Receipts on All", true),
                 new TKey(5, "Items", true),
                 new TKey(6, "Change Tax", hasItems),
-                new TKey(7, "Loyallist Lookup/Enrollment", !CustomerLinked),
-                IsCheckinActive
-                    ? new TKey(8, "Complete Payment (WinkPay)", hasItems)
-                    : new TKey(8, "Add Registry on All", true),
+                new TKey(7, "Loyallist Lookup/Enrollment", false),
+                new TKey(8, "Add Registry on All", true),
             },
             RegisterStage.Checkout => new[]
             {
                 new TKey(1, "Bloomingdale's Card/ Bloomingdale's Pay", true),
-                IsCheckinActive
-                    ? new TKey(2, "Complete Payment (WinkPay)", true)
-                    : new TKey(2, "Biometric Pay", true),
+                new TKey(2, "Biometric Pay", true),
                 new TKey(3, "", false),
                 new TKey(4, "", false),
                 new TKey(5, "Gift Card/Rewards Happy Returns", true),
                 new TKey(6, "", false),
-                new TKey(7, "More Payment Methods", true),
+                new TKey(7, "More Payment Methods", false),
                 new TKey(8, "", false),
             },
             RegisterStage.MorePayments => new[]
@@ -363,13 +371,13 @@ public partial class MainViewModel : ViewModelBase
             RegisterStage.CardTender => new[]
             {
                 new TKey(1, "", false),
-                new TKey(2, "Apply for New Account", true),
+                new TKey(2, "Apply for New Account", false),
                 new TKey(3, "", false),
-                new TKey(4, "Lookup Account", true),
+                new TKey(4, "Lookup Account", false),
                 new TKey(5, "", false),
                 new TKey(6, "", false),
                 new TKey(7, "Promo Plans", true),
-                new TKey(8, "Input Account on Signature Pad", true),
+                new TKey(8, "Input Account on Signature Pad", false),
             },
             RegisterStage.SignatureWait => new[]
             {
@@ -729,16 +737,6 @@ public partial class MainViewModel : ViewModelBase
         if (ShowSetup || Stage != RegisterStage.Loyalty) return;
         Stage = RegisterStage.Scan;
         Refresh();
-    }
-
-    /// <summary>F8 — suspend (mocked; the demo never recalls).</summary>
-    [RelayCommand]
-    private void Suspend()
-    {
-        if (Stage is RegisterStage.Scan or RegisterStage.Checkout or RegisterStage.MorePayments)
-        {
-            Status = "Transaction suspended";
-        }
     }
 
     /// <summary>Esc — stage-appropriate step back.</summary>
