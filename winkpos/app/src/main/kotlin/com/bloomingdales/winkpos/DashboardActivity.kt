@@ -377,7 +377,7 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         if (checkin) {
             label.letterSpacing = 0.08f
             label.textSize = 18f
-            value.textSize = 40f
+            value.textSize = 34f
             value.setTypeface(android.graphics.Typeface.SERIF, android.graphics.Typeface.NORMAL)
         } else {
             label.letterSpacing = 0f
