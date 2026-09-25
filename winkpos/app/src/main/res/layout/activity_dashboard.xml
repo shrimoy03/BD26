@@ -104,17 +104,9 @@
                         android:gravity="center_vertical"
                         android:orientation="horizontal">
 
-                        <ImageView
-                            android:layout_width="24dp"
-                            android:layout_height="30dp"
-                            android:contentDescription="@string/loyallist"
-                            android:scaleType="fitCenter"
-                            android:src="@drawable/loyallist_dog" />
-
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginStart="6dp"
                             android:letterSpacing="0.12"
                             android:text="@string/loyallist"
                             android:textColor="@color/loyallist_purple"
@@ -590,6 +582,90 @@
                 </LinearLayout>
             </FrameLayout>
 
+            <!-- Check-in mode: the customer is identified and waiting for the
+                 cashier; this box replaces the Pay button. -->
+            <LinearLayout
+                android:id="@+id/checkinNote"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_tile"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="16dp"
+                    android:paddingTop="16dp"
+                    android:paddingEnd="16dp"
+                    android:paddingBottom="14dp">
+
+                    <ImageView
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:contentDescription="@string/checkin_title"
+                        android:src="@drawable/ic_checkin_done" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="16dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="serif"
+                            android:text="@string/checkin_title"
+                            android:textColor="@color/text_dark"
+                            android:textSize="22sp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="@string/checkin_subtitle"
+                            android:textColor="@color/text_grey"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginEnd="16dp"
+                    android:background="@color/border_grey" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="16dp">
+
+                    <ImageView
+                        android:layout_width="32dp"
+                        android:layout_height="8dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_dots_pending" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:layout_weight="1"
+                        android:lineSpacingExtra="3dp"
+                        android:text="@string/checkin_note"
+                        android:textColor="@color/text_dark"
+                        android:textSize="15sp" />
+                </LinearLayout>
+            </LinearLayout>
+
             <!-- Flexible gap: absorbs leftover height so payment + Pay pin
                  to the bottom without any scrolling. -->
             <View
@@ -646,19 +722,6 @@
                     android:textColor="@color/text_dark"
                     android:textSize="18sp" />
             </LinearLayout>
-
-            <TextView
-                android:id="@+id/checkinNote"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:gravity="center"
-                android:padding="10dp"
-                android:background="@drawable/bg_btn_disabled"
-                android:text="@string/checkin_note"
-                android:textColor="@color/white"
-                android:textSize="15sp"
-                android:visibility="gone" />
 
             <Button
                 android:id="@+id/payButton"

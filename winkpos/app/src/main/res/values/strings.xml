@@ -55,7 +55,9 @@
     <string name="processing">Processing…</string>
     <string name="processing_payment">Processing your payment…</string>
     <string name="processing_detail">%1$s · card ending %2$s · %3$s</string>
-    <string name="checkin_note">You\'re checked in — your cashier is finishing the order. The total updates as items are added.</string>
+    <string name="checkin_title">You\'re checked in</string>
+    <string name="checkin_subtitle">Your points and rewards are applied.</string>
+    <string name="checkin_note">Your cashier is adding items. Your total updates here as they go.</string>
     <string name="checkin_prompt">Checking in — scan your Face or Palm</string>
     <string name="payment_failed">There was a problem processing your payment.</string>
     <string name="reward_applied">$10.00 Reward applied</string>

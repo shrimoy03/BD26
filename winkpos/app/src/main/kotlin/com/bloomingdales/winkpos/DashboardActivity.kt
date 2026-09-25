@@ -61,7 +61,7 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
     private lateinit var couponRow: View
     private lateinit var couponValue: TextView
     private lateinit var processingDetail: TextView
-    private lateinit var checkinNote: TextView
+    private lateinit var checkinNote: View
 
     /** Pending autopay charge; cleared if the register cancels during the confirmation beat. */
     private var autoPayRunnable: Runnable? = null
