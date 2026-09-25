@@ -17,11 +17,10 @@
         <vm:MainViewModel />
     </Design.DataContext>
 
-    <!-- AYS register keys: F3 cancel txn, F6 bypass loyalty,
+    <!-- AYS register keys: F3 cancel txn,
          Esc step back, Delete void line. F9 opens the terminal setup screen. -->
     <Window.KeyBindings>
         <KeyBinding Gesture="F3" Command="{Binding CancelTransactionCommand}" />
-        <KeyBinding Gesture="F6" Command="{Binding BypassCommand}" />
         <KeyBinding Gesture="F9" Command="{Binding OpenSetupCommand}" />
         <KeyBinding Gesture="Escape" Command="{Binding EscapeCommand}" />
         <KeyBinding Gesture="Delete" Command="{Binding DeleteLineCommand}" />

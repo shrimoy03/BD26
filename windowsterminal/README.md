@@ -14,7 +14,8 @@ The register is a stage machine that walks the store flow screen for screen
 (`ViewModels/MainViewModel.cs`, `RegisterStage`):
 
 1. **Loyalty** — "Ask customer to Insert or Slide Bloomingdale's Card…";
-   T1 Lookup Loyalty Number links `B.TEST · XXXXXXXXX8585`, F6 bypasses.
+   the lookup/enrolment keys are display-only; scanning a UPC or picking an
+   item from Items skips the prompt and starts the sale.
 2. **Scan** — type/scan a UPC and press Enter (`3145891313406` Chanel Beaute
    50.00, `3365440057838` Ysl Cosmetics 30.00); Delete voids the selected
    line; T1 Checkout.

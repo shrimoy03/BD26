@@ -286,7 +286,6 @@
                          keyboard. The shortcuts still work. -->
                     <StackPanel DockPanel.Dock="Bottom" Spacing="6">
                         <WrapPanel IsVisible="{Binding IsLoyaltyStage}" ItemSpacing="6" LineSpacing="6">
-                            <Button Classes="fkey" Content="Bypass" Command="{Binding BypassCommand}" />
                             <Button Classes="fkey" Content="Cancel Transaction"
                                     Command="{Binding CancelTransactionCommand}" />
                         </WrapPanel>

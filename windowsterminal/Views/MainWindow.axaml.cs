@@ -115,8 +115,8 @@ public partial class MainWindow : Window
 
         // Card flow (loyalty bypassed, like the deck's YSL sale).
         vm.NewSaleCommand.Execute(null);
-        vm.BypassCommand.Execute(null);
-        vm.ScanUpc("3365440057838");    // Ysl Cosmetics 30.00
+        foreach (var c in "3365440057838") vm.EntryChar(c); // Ysl Cosmetics 30.00 — a scan on the loyalty prompt bypasses it
+        vm.EntrySubmit();
         PressT(vm, 1);                  // checkout
         PressT(vm, 1);                  // Bloomingdale's Card/Pay
         await Shot("08-card-tender");

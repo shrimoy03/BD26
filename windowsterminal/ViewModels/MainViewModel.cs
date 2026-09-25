@@ -337,14 +337,16 @@ public partial class MainViewModel : ViewModelBase
             RegisterStage.Checkout when IsCheckinActive => OnlyCompletePayment(2, hasItems),
             RegisterStage.Scan => new[]
             {
+                // Only keys that actually go somewhere are live; the rest are
+                // on the rail for fidelity and greyed out.
                 new TKey(1, "Checkout", hasItems),
-                new TKey(2, "Change Price", hasItems),
-                new TKey(3, "Send Merchandise", true),
-                new TKey(4, "Add Gift Receipts on All", true),
+                new TKey(2, "Change Price", false),
+                new TKey(3, "Send Merchandise", false),
+                new TKey(4, "Add Gift Receipts on All", false),
                 new TKey(5, "Items", true),
-                new TKey(6, "Change Tax", hasItems),
+                new TKey(6, "Change Tax", false),
                 new TKey(7, "Loyallist Lookup/Enrollment", false),
-                new TKey(8, "Add Registry on All", true),
+                new TKey(8, "Add Registry on All", false),
             },
             RegisterStage.Checkout => new[]
             {
@@ -352,7 +354,7 @@ public partial class MainViewModel : ViewModelBase
                 new TKey(2, "Biometric Pay", true),
                 new TKey(3, "", false),
                 new TKey(4, "", false),
-                new TKey(5, "Gift Card/Rewards Happy Returns", true),
+                new TKey(5, "Gift Card/Rewards Happy Returns", false),
                 new TKey(6, "", false),
                 new TKey(7, "More Payment Methods", false),
                 new TKey(8, "", false),
@@ -362,11 +364,11 @@ public partial class MainViewModel : ViewModelBase
                 new TKey(1, "Bloomingdale's Card/ Bloomingdale's Pay", true),
                 new TKey(2, "Bankcard/ Debit Card/ Mobile Wallet", true),
                 new TKey(3, "Cash", true),
-                new TKey(4, "Check", true),
-                new TKey(5, "Gift Card/Rewards Happy Returns", true),
-                new TKey(6, "Reward Certificate", true),
+                new TKey(4, "Check", false),
+                new TKey(5, "Gift Card/Rewards Happy Returns", false),
+                new TKey(6, "Reward Certificate", false),
                 new TKey(7, "PayPal/Venmo", false),
-                new TKey(8, "More", true),
+                new TKey(8, "More", false),
             },
             RegisterStage.CardTender => new[]
             {
@@ -376,7 +378,7 @@ public partial class MainViewModel : ViewModelBase
                 new TKey(4, "Lookup Account", false),
                 new TKey(5, "", false),
                 new TKey(6, "", false),
-                new TKey(7, "Promo Plans", true),
+                new TKey(7, "Promo Plans", false),
                 new TKey(8, "Input Account on Signature Pad", false),
             },
             RegisterStage.SignatureWait => new[]
@@ -570,7 +572,9 @@ public partial class MainViewModel : ViewModelBase
     {
         var ok = Stage switch
         {
-            RegisterStage.Scan => char.IsLetterOrDigit(c),
+            // A scan-gun read on the loyalty prompt implies bypassing loyalty,
+            // the same as picking an item from the list.
+            RegisterStage.Loyalty or RegisterStage.Scan => char.IsLetterOrDigit(c),
             RegisterStage.CashTender => char.IsDigit(c),
             _ => false,
         };
@@ -592,10 +596,13 @@ public partial class MainViewModel : ViewModelBase
     {
         switch (Stage)
         {
+            case RegisterStage.Loyalty:
             case RegisterStage.Scan:
                 var upc = EntryBuffer.Trim();
                 ClearEntry();
-                if (upc.Length > 0) ScanUpc(upc);
+                if (upc.Length == 0) break;
+                if (Stage == RegisterStage.Loyalty) Stage = RegisterStage.Scan;
+                ScanUpc(upc);
                 break;
 
             case RegisterStage.CashTender:
@@ -728,15 +735,6 @@ public partial class MainViewModel : ViewModelBase
         {
             await Task.Delay(100);
         }
-    }
-
-    /// <summary>F6 — bypass loyalty and go straight to merchandise.</summary>
-    [RelayCommand]
-    private void Bypass()
-    {
-        if (ShowSetup || Stage != RegisterStage.Loyalty) return;
-        Stage = RegisterStage.Scan;
-        Refresh();
     }
 
     /// <summary>Esc — stage-appropriate step back.</summary>
