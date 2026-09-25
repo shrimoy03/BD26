@@ -7,6 +7,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.bloomingdales.winkpos.CheckinSession
 import androidx.core.app.NotificationCompat
 import com.bloomingdales.winkpos.BuildConfig
 import java.util.concurrent.CopyOnWriteArrayList
@@ -36,6 +37,16 @@ object PosLink {
         fun onLinkStateChanged(connected: Boolean) {}
         fun onStartPayment(orderId: String, amountCents: Long) {}
         fun onCancelPayment(orderId: String?) {}
+        /**
+         * A fresh biometric capture is about to launch for [orderId]. The
+         * previous customer's session has just been wiped — any screen still
+         * showing it must go, so nothing of theirs flashes for the next scan.
+         */
+        fun onCaptureLaunching(orderId: String) {}
+        /** Check-in mode: the cashier rang more items; the sale's amount moved. */
+        fun onAmountChanged(orderId: String, amountCents: Long) {}
+        /** Check-in mode: the cashier pressed Complete Payment — charge now. */
+        fun onCompletePayment(orderId: String, amountCents: Long) {}
     }
 
     /** The sale the register asked us to collect; null orderId = no pending sale. */
@@ -44,17 +55,26 @@ object PosLink {
             private set
         @Volatile var amountCents: Long = 0
             private set
+        /** Check-in mode: identified first, charged when the register says Complete Payment. */
+        @Volatile var checkin: Boolean = false
+            private set
 
         val isPending: Boolean get() = orderId != null
 
-        internal fun set(orderId: String, amountCents: Long) {
+        internal fun set(orderId: String, amountCents: Long, checkin: Boolean = false) {
             this.orderId = orderId
+            this.amountCents = amountCents
+            this.checkin = checkin
+        }
+
+        internal fun updateAmount(amountCents: Long) {
             this.amountCents = amountCents
         }
 
         internal fun clear() {
             orderId = null
             amountCents = 0
+            checkin = false
         }
     }
 
@@ -143,6 +163,19 @@ object PosLink {
         PxrrsTransport.handScreenBackToRetailer(ctx, BuildConfig.POS_LINK_PXRRS_URL)
     }
 
+    /** Check-in mode: tell the register the customer is identified and WinkPay is waiting. */
+    fun sendCheckinReady(method: String?, customerLabel: String) {
+        val orderId = RegisterSale.orderId ?: return
+        transport?.send(
+            PosMessage(
+                type = PosMessage.TYPE_CHECKIN_READY,
+                orderId = orderId,
+                method = method,
+                customerLabel = customerLabel,
+            ),
+        )
+    }
+
     /** Report the outcome of the pending register sale and clear it. */
     fun sendResult(
         status: String,
@@ -180,8 +213,9 @@ object PosLink {
                     Log.w(TAG, "START_PAYMENT with no amountCents: ${message.toJson()}")
                     return
                 }
-                Log.d(TAG, "START_PAYMENT order=$orderId amount=$amount method=${message.method}")
-                RegisterSale.set(orderId, amount)
+                val checkin = message.checkin == true
+                Log.d(TAG, "START_PAYMENT order=$orderId amount=$amount method=${message.method} checkin=$checkin")
+                RegisterSale.set(orderId, amount, checkin)
                 listeners.forEach { it.onStartPayment(orderId, amount) }
 
                 // FACE/PALM = the customer already picked a biometric tender
@@ -201,9 +235,38 @@ object PosLink {
                     } else {
                         lastLaunchOrderId = orderId
                         lastLaunchAtMs = now
+                        // Switching tender (face -> palm, a new check-in, a new
+                        // sale) means a new identification: drop whoever was
+                        // checked in before the camera opens so their name and
+                        // card never show for the next person.
+                        CheckinSession.clear()
+                        listeners.forEach { it.onCaptureLaunching(orderId) }
                         appContext?.let { ctx -> launchCapture(ctx, biometric) }
                     }
                 }
+            }
+            PosMessage.TYPE_DISPLAY_CART -> {
+                // Live amount for a check-in in progress. Any other cart mirror
+                // is PxRetailer's business and ignored here.
+                if (message.checkin != true) return
+                val orderId = RegisterSale.orderId ?: return
+                if (!RegisterSale.checkin) return
+                val amount = message.amountCents ?: return
+                if (amount != RegisterSale.amountCents) {
+                    RegisterSale.updateAmount(amount)
+                    Log.d(TAG, "check-in amount -> $amount")
+                    listeners.forEach { it.onAmountChanged(orderId, amount) }
+                }
+            }
+            PosMessage.TYPE_COMPLETE_PAYMENT -> {
+                val orderId = RegisterSale.orderId
+                if (orderId == null || (message.orderId != null && message.orderId != orderId)) {
+                    Log.w(TAG, "COMPLETE_PAYMENT for ${message.orderId} ignored — pending sale is $orderId")
+                    return
+                }
+                message.amountCents?.let { RegisterSale.updateAmount(it) }
+                Log.d(TAG, "COMPLETE_PAYMENT order=$orderId amount=${RegisterSale.amountCents}")
+                listeners.forEach { it.onCompletePayment(orderId, RegisterSale.amountCents) }
             }
             PosMessage.TYPE_CANCEL_PAYMENT -> {
                 if (message.orderId != null && message.orderId != RegisterSale.orderId) {

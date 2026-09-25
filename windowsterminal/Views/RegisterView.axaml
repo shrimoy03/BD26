@@ -293,16 +293,12 @@
                         <WrapPanel IsVisible="{Binding IsScanStage}" ItemSpacing="6" LineSpacing="6">
                             <Button Classes="fkey" Content="Delete Selected Item"
                                     Command="{Binding DeleteLineCommand}" />
-                            <Button Classes="fkey" Content="Suspend Transaction"
-                                    IsVisible="{Binding HasItems}" Command="{Binding SuspendCommand}" />
                             <Button Classes="fkey" Content="Cancel Transaction"
                                     Command="{Binding CancelTransactionCommand}" />
                         </WrapPanel>
                         <WrapPanel IsVisible="{Binding IsTenderSelectStage}" ItemSpacing="6" LineSpacing="6">
                             <Button Classes="fkey" Content="Return to Merchandise"
                                     Command="{Binding EscapeCommand}" />
-                            <Button Classes="fkey" Content="Suspend Transaction"
-                                    Command="{Binding SuspendCommand}" />
                             <Button Classes="fkey" Content="Cancel Transaction"
                                     Command="{Binding CancelTransactionCommand}" />
                         </WrapPanel>

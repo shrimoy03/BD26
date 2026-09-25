@@ -10,3 +10,6 @@ obj/
 .vs/
 .idea/
 
+
+# Windows publish output (large binaries; the zip is handed over out of band)
+windowsterminal/publish/

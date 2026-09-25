@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -61,6 +62,7 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
     private lateinit var couponRow: View
     private lateinit var couponValue: TextView
     private lateinit var processingDetail: TextView
+    private lateinit var checkinNote: View
 
     /** Pending autopay charge; cleared if the register cancels during the confirmation beat. */
     private var autoPayRunnable: Runnable? = null
@@ -77,6 +79,13 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
 
     /** Register-driven sale mode: the merchant POS owns the amount. */
     private val registerMode: Boolean get() = PosLink.RegisterSale.isPending
+
+    /**
+     * Check-in mode: the customer identified themselves before the cashier
+     * finished ringing. No Pay button — the amount streams in from the
+     * register and the charge runs when the cashier presses Complete Payment.
+     */
+    private val checkinMode: Boolean get() = registerMode && PosLink.RegisterSale.checkin
 
     /**
      * Whether this screen was opened for a register sale. registerMode itself
@@ -116,6 +125,7 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         couponRow = findViewById(R.id.couponRow)
         couponValue = findViewById(R.id.couponValue)
         processingDetail = findViewById(R.id.processingDetail)
+        checkinNote = findViewById(R.id.checkinNote)
         cartBadge = findViewById(R.id.cartBadge)
         payButton = findViewById(R.id.payButton)
         orderTitle = findViewById(R.id.orderTitle)
@@ -168,10 +178,23 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         // Autopay: the customer opted this card in (or Settings forces it), so a
         // register sale skips the confirmation page. The processing screen
         // names the customer and the card for a moment, then the charge runs.
-        val autoCard = autoPayCardFor(CheckinSession.cards)
-        if (openedForRegisterSale && autoCard != null) {
-            chargeCard = autoCard
-            startAutoPay(autoCard)
+        if (checkinMode) {
+            // Identified early: hold here with a live total; the register's
+            // Complete Payment triggers the charge (autopay card if any).
+            payButton.visibility = View.GONE
+            checkinNote.visibility = View.VISIBLE
+            val card = CheckinSession.preferredCard
+            PosLink.sendCheckinReady(
+                method = null,
+                customerLabel = CheckinSession.firstName.ifEmpty { "Customer" } +
+                    (card?.let { " · card ending ${it.last4}" } ?: " · no card on file"),
+            )
+        } else {
+            val autoCard = autoPayCardFor(CheckinSession.cards)
+            if (openedForRegisterSale && autoCard != null) {
+                chargeCard = autoCard
+                startAutoPay(autoCard)
+            }
         }
 
         // Swallow Back while a charge is in flight — leaving mid-payment could
@@ -270,6 +293,36 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         renderTotals()
     }
 
+    override fun onCaptureLaunching(orderId: String) {
+        // A new scan is starting (tender switched, or a new customer): this
+        // confirmation page belongs to the previous session — close it now,
+        // unless a charge is already on its way to Wink.
+        if (paying) return
+        autoPayRunnable?.let { mainHandler.removeCallbacks(it) }
+        autoPayRunnable = null
+        android.util.Log.d("Dashboard", "new capture launching for $orderId — closing stale confirmation page")
+        finish()
+    }
+
+    override fun onAmountChanged(orderId: String, amountCents: Long) {
+        renderItems()
+        renderTotals()
+    }
+
+    override fun onCompletePayment(orderId: String, amountCents: Long) {
+        if (paying) return
+        val card = autoPayCardFor(CheckinSession.cards) ?: CheckinSession.preferredCard
+        if (card == null) {
+            PosLink.sendResult(PosMessage.STATUS_DECLINED, reason = getString(R.string.no_card_on_file))
+            toast(getString(R.string.no_card_on_file))
+            return
+        }
+        renderTotals()
+        chargeCard = card
+        showProcessing(card)
+        pay()
+    }
+
     override fun onCancelPayment(orderId: String?) {
         autoPayRunnable?.let { mainHandler.removeCallbacks(it) }
         autoPayRunnable = null
@@ -302,6 +355,38 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         renderTotals()
     }
 
+    /**
+     * Check-in mode has no Pay button, so the totals move below the flexible
+     * gap and anchor the bottom of the page (subtotal, rule, large TOTAL).
+     * Otherwise they sit under the items as usual.
+     */
+    private fun layoutTotalsForCheckin(checkin: Boolean) {
+        val block = findViewById<View>(R.id.totalsBlock)
+        val parent = block.parent as ViewGroup
+        // Normal: just above the big card. Check-in: just above the (hidden)
+        // Pay button, i.e. after the flexible gap, at the foot of the page.
+        val anchor: View = if (checkin) payButton else findViewById(R.id.bigCardBlock)
+        if (parent.indexOfChild(block) != parent.indexOfChild(anchor) - 1) {
+            parent.removeView(block)
+            parent.addView(block, parent.indexOfChild(anchor))
+        }
+        findViewById<View>(R.id.totalsDivider).visibility = if (checkin) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.subtotalRow).visibility = if (checkin) View.VISIBLE else View.GONE
+        val label = findViewById<TextView>(R.id.totalLabel)
+        val value = findViewById<TextView>(R.id.totalValue)
+        if (checkin) {
+            label.letterSpacing = 0.08f
+            label.textSize = 18f
+            value.textSize = 34f
+            value.setTypeface(android.graphics.Typeface.SERIF, android.graphics.Typeface.NORMAL)
+        } else {
+            label.letterSpacing = 0f
+            label.textSize = 20f
+            value.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+            value.textSize = 20f
+        }
+    }
+
     private fun renderItems() {
         itemsContainer.removeAllViews()
         val inflater = LayoutInflater.from(this)
@@ -321,8 +406,10 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
                 CheckinSession.firstName.uppercase().ifEmpty { "LOYALLIST MEMBER" }
             findViewById<TextView>(R.id.bigCardNumber).text =
                 CheckinSession.preferredCard?.let { "•••• ${it.last4}" } ?: ""
+            layoutTotalsForCheckin(checkinMode)
             return
         }
+        layoutTotalsForCheckin(false)
         findViewById<View>(R.id.subtotalRow).visibility = View.VISIBLE
         findViewById<View>(R.id.taxesRow).visibility = View.VISIBLE
         findViewById<View>(R.id.preferredRow).visibility = View.VISIBLE
@@ -351,7 +438,7 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         couponRow.visibility = if (couponCents > 0) View.VISIBLE else View.GONE
         couponValue.text = "-" + money(couponCents)
 
-        val canPay = totalCents > 0 && CheckinSession.preferredCard != null && !paying
+        val canPay = totalCents > 0 && CheckinSession.preferredCard != null && !paying && !checkinMode
         payButton.isEnabled = canPay
         payButton.setBackgroundResource(
             if (canPay) R.drawable.bg_btn_black else R.drawable.bg_btn_disabled,

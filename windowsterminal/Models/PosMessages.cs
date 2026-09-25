@@ -29,6 +29,17 @@ public sealed record PosMessage
     public CartLine[]? Items { get; init; }
     public long? SubtotalCents { get; init; }
     public long? TaxCents { get; init; }
+
+    /// <summary>
+    /// Check-in mode. On START_PAYMENT: the customer checked in before the
+    /// cashier finished ringing — WinkPay identifies them and then waits, with
+    /// no Pay button, while the amount streams in. On DISPLAY_CART: this sync
+    /// is that live amount, for the app only (PxRetailer stays hidden).
+    /// </summary>
+    public bool? Checkin { get; init; }
+
+    // CHECKIN_READY — who the terminal identified ("Sarah · card ending 1234")
+    public string? CustomerLabel { get; init; }
 }
 
 /// <summary>One basket line inside a DISPLAY_CART message.</summary>
@@ -42,6 +53,8 @@ public static class PosMessageTypes
     public const string DisplayCart = "DISPLAY_CART";
     public const string ShowThanks = "SHOW_THANKS";
     public const string ShowRetailer = "SHOW_RETAILER";
+    /// <summary>Check-in mode: the cashier is done — charge the amount carried here.</summary>
+    public const string CompletePayment = "COMPLETE_PAYMENT";
 
     // PxRetailer form -> Terminal (PAYMENTSTATUS FireEvent, via PXRRS notify)
     public const string TenderSelected = "TENDER_SELECTED";
@@ -49,6 +62,8 @@ public static class PosMessageTypes
     // Android -> Terminal
     public const string Hello = "HELLO";
     public const string PaymentResult = "PAYMENT_RESULT";
+    /// <summary>Check-in mode: the customer's biometric passed; WinkPay is waiting for the total.</summary>
+    public const string CheckinReady = "CHECKIN_READY";
 }
 
 public static class PosJson

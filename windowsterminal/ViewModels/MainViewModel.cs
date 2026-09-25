@@ -196,6 +196,23 @@ public partial class MainViewModel : ViewModelBase
     public partial bool IsAwaitingTerminal { get; set; }
 
     /// <summary>
+    /// Check-in mode: the customer pressed Check in on the terminal before the
+    /// cashier finished ringing. WinkPay identifies them and then waits with no
+    /// Pay button while the amount streams over; the cashier keeps ringing and
+    /// ends the sale with the Complete Payment key. The customer screen belongs
+    /// to WinkPay for the duration — the register's cart syncs go to the app
+    /// only. Distinct from the pay-after-ringing flow, which is unchanged.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TKeys))]
+    public partial bool IsCheckinActive { get; set; }
+
+    private string? _checkinOrderId;
+    private string? _checkinMethod;
+    private bool _checkinScanReady;
+    private long _checkinLaunchedMs;
+
+    /// <summary>
     /// A terminal command is in flight. The key grid ignores presses and the
     /// view shows a "Please wait" overlay, so a fast operator can't queue up
     /// duplicate sends or interleave commands.
@@ -290,6 +307,12 @@ public partial class MainViewModel : ViewModelBase
 
     public IReadOnlyList<TKey> TKeys => BuildTKeys();
 
+    /// <summary>Check-in mode T-key row: blank except Complete Payment at <paramref name="slot"/>.</summary>
+    private static TKey[] OnlyCompletePayment(int slot, bool enabled) =>
+        Enumerable.Range(1, 8)
+            .Select(i => i == slot ? new TKey(i, "Complete Payment (WinkPay)", enabled) : new TKey(i, "", false))
+            .ToArray();
+
     private IReadOnlyList<TKey> BuildTKeys()
     {
         var hasItems = Lines.Count > 0;
@@ -297,15 +320,21 @@ public partial class MainViewModel : ViewModelBase
         {
             RegisterStage.Loyalty => new[]
             {
-                new TKey(1, "Lookup Loyalty Number", true),
-                new TKey(2, "Enroll in Loyalty", true),
-                new TKey(3, "Apply for New Account", true),
-                new TKey(4, "Lookup Account", true),
+                // Lookups / enrolment / account keys are display-only in the
+                // demo — shown for fidelity, never clickable.
+                new TKey(1, "Lookup Loyalty Number", false),
+                new TKey(2, "Enroll in Loyalty", false),
+                new TKey(3, "Apply for New Account", false),
+                new TKey(4, "Lookup Account", false),
                 new TKey(5, "Items", true),
                 new TKey(6, "Terminal Setup", true),
                 new TKey(7, "", false),
-                new TKey(8, "Input Account on Signature Pad", true),
+                new TKey(8, "Input Account on Signature Pad", false),
             },
+            // Check-in mode: the customer is identified and waiting; the only
+            // key that matters is the one that settles with WinkPay.
+            RegisterStage.Scan when IsCheckinActive => OnlyCompletePayment(8, hasItems),
+            RegisterStage.Checkout when IsCheckinActive => OnlyCompletePayment(2, hasItems),
             RegisterStage.Scan => new[]
             {
                 new TKey(1, "Checkout", hasItems),
@@ -314,7 +343,7 @@ public partial class MainViewModel : ViewModelBase
                 new TKey(4, "Add Gift Receipts on All", true),
                 new TKey(5, "Items", true),
                 new TKey(6, "Change Tax", hasItems),
-                new TKey(7, "Loyallist Lookup/Enrollment", !CustomerLinked),
+                new TKey(7, "Loyallist Lookup/Enrollment", false),
                 new TKey(8, "Add Registry on All", true),
             },
             RegisterStage.Checkout => new[]
@@ -325,7 +354,7 @@ public partial class MainViewModel : ViewModelBase
                 new TKey(4, "", false),
                 new TKey(5, "Gift Card/Rewards Happy Returns", true),
                 new TKey(6, "", false),
-                new TKey(7, "More Payment Methods", true),
+                new TKey(7, "More Payment Methods", false),
                 new TKey(8, "", false),
             },
             RegisterStage.MorePayments => new[]
@@ -342,13 +371,13 @@ public partial class MainViewModel : ViewModelBase
             RegisterStage.CardTender => new[]
             {
                 new TKey(1, "", false),
-                new TKey(2, "Apply for New Account", true),
+                new TKey(2, "Apply for New Account", false),
                 new TKey(3, "", false),
-                new TKey(4, "Lookup Account", true),
+                new TKey(4, "Lookup Account", false),
                 new TKey(5, "", false),
                 new TKey(6, "", false),
                 new TKey(7, "Promo Plans", true),
-                new TKey(8, "Input Account on Signature Pad", true),
+                new TKey(8, "Input Account on Signature Pad", false),
             },
             RegisterStage.SignatureWait => new[]
             {
@@ -462,7 +491,10 @@ public partial class MainViewModel : ViewModelBase
             case 5: OpenItems(); break;
             case 6: Status = "Change Tax — supervisor required"; break;
             case 7: LinkLoyalty(); break;
-            case 8: Status = "Registry added on all"; break;
+            case 8:
+                if (IsCheckinActive) CompleteCheckinPayment();
+                else Status = "Registry added on all";
+                break;
         }
     }
 
@@ -482,6 +514,11 @@ public partial class MainViewModel : ViewModelBase
                 StartCardTender("BD_LOYALLIST");
                 break;
             case 2:
+                if (IsCheckinActive)
+                {
+                    CompleteCheckinPayment();
+                    break;
+                }
                 // Biometric Pay: navigate the terminal to the PaymentScreen
                 // form; the Face/Palm buttons there fire the tender event back.
                 StartCardTender("BIOMETRIC");
@@ -702,16 +739,6 @@ public partial class MainViewModel : ViewModelBase
         Refresh();
     }
 
-    /// <summary>F8 — suspend (mocked; the demo never recalls).</summary>
-    [RelayCommand]
-    private void Suspend()
-    {
-        if (Stage is RegisterStage.Scan or RegisterStage.Checkout or RegisterStage.MorePayments)
-        {
-            Status = "Transaction suspended";
-        }
-    }
-
     /// <summary>Esc — stage-appropriate step back.</summary>
     [RelayCommand]
     private async Task EscapeAsync()
@@ -856,20 +883,153 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    // ----- Check-in mode -----
+
+    /// <summary>
+    /// Terminal: the customer pressed Check in. Show them the Face/Palm
+    /// options and let the cashier keep ringing — nothing is awaited yet.
+    /// </summary>
+    private void BeginCheckin()
+    {
+        if (IsAwaitingTerminal)
+        {
+            Status = "Check-in ignored — a payment is already in progress";
+            return;
+        }
+        if (IsCheckinActive)
+        {
+            Console.WriteLine("[Register] check-in already active — ignoring repeat press");
+            return;
+        }
+        if (_link is not { IsConnected: true })
+        {
+            Status = "Customer terminal not connected";
+            return;
+        }
+
+        IsCheckinActive = true;
+        _checkinScanReady = false;
+        _checkinMethod = null;
+        _checkinOrderId = $"{TxnId}-CI";
+        Status = "Customer is checking in — showing Face / Palm on the terminal";
+        Console.WriteLine($"[Register] CHECK-IN started for {_checkinOrderId}");
+        Refresh();
+
+        // PxRetailer's payment-options form; its Face/Palm buttons come back
+        // as tender events and are routed to LaunchCheckinBiometric.
+        _ = Task.Run(() => _link.SendAsync(new PosMessage
+        {
+            Type = PosMessageTypes.StartPayment,
+            OrderId = _checkinOrderId,
+            AmountCents = (long)Math.Round(Balance * 100),
+            Currency = "USD",
+            Method = "BIOMETRIC",
+        }));
+    }
+
+    /// <summary>
+    /// Terminal: the checking-in customer picked Face or Palm. Launch WinkPay
+    /// with whatever is rung so far (possibly nothing); the amount is kept
+    /// current by the cart syncs and settled by Complete Payment.
+    /// </summary>
+    private void LaunchCheckinBiometric(string method)
+    {
+        if (Environment.TickCount64 - _checkinLaunchedMs < 10_000 && _checkinMethod == method)
+        {
+            Console.WriteLine($"[Register] duplicate check-in {method} press ignored");
+            return;
+        }
+        _checkinMethod = method;
+        _checkinLaunchedMs = Environment.TickCount64;
+        Status = $"Customer scanning {method.ToLowerInvariant()} — keep ringing items";
+        var launch = new PosMessage
+        {
+            Type = PosMessageTypes.StartPayment,
+            OrderId = _checkinOrderId,
+            AmountCents = (long)Math.Round((Total - Savings) * 100m),
+            Currency = "USD",
+            Method = method,
+            Checkin = true,
+        };
+        Console.WriteLine($"[Register] CHECK-IN START_PAYMENT {method} {launch.OrderId} amountCents={launch.AmountCents}");
+        _ = Task.Run(() => _link!.SendAsync(launch));
+    }
+
+    /// <summary>Cashier: Complete Payment — WinkPay charges the current balance.</summary>
+    private void CompleteCheckinPayment()
+    {
+        if (!IsCheckinActive) return;
+        if (!_checkinScanReady)
+        {
+            Status = "Customer hasn't finished checking in yet";
+            return;
+        }
+        if (Balance <= 0)
+        {
+            Status = "Nothing due — ring items first";
+            return;
+        }
+
+        _terminalOrderId = _checkinOrderId;
+        _awaitingMethod = _checkinMethod ?? "FACE";
+        _awaitingSinceMs = Environment.TickCount64;
+        IsAwaitingTerminal = true;
+        Stage = RegisterStage.CardTender;
+        Status = "Completing payment on WinkPay…";
+        Refresh();
+        var complete = new PosMessage
+        {
+            Type = PosMessageTypes.CompletePayment,
+            OrderId = _checkinOrderId,
+            AmountCents = (long)Math.Round(Balance * 100),
+            Currency = "USD",
+        };
+        Console.WriteLine($"[Register] COMPLETE_PAYMENT {complete.OrderId} amountCents={complete.AmountCents}");
+        IsBusy = true;
+        _ = Task.Run(async () =>
+        {
+            var sent = await _link!.SendAsync(complete);
+            OnUiThread(() =>
+            {
+                IsBusy = false;
+                if (!sent)
+                {
+                    IsAwaitingTerminal = false;
+                    _terminalOrderId = null;
+                    Stage = RegisterStage.Checkout;
+                    Status = "WinkPay is not connected — could not complete the payment";
+                    Refresh();
+                }
+            });
+        });
+    }
+
+    private void EndCheckin()
+    {
+        if (!IsCheckinActive && _checkinOrderId is null) return;
+        IsCheckinActive = false;
+        _checkinScanReady = false;
+        _checkinMethod = null;
+        _checkinOrderId = null;
+        _checkinLaunchedMs = 0;
+    }
+
     private async Task CancelTerminalPaymentAsync()
     {
         _flowTimer.Stop();
         _flowTimerAction = null;
         _signatureTimer.Stop();
-        if (!IsAwaitingTerminal) return;
-        if (_link is not null && _terminalOrderId is not null)
+        if (!IsAwaitingTerminal && !IsCheckinActive) return;
+        var orderId = _terminalOrderId ?? _checkinOrderId;
+        if (_link is not null && orderId is not null)
         {
             await _link.SendAsync(new PosMessage
             {
                 Type = PosMessageTypes.CancelPayment,
-                OrderId = _terminalOrderId,
+                OrderId = orderId,
             });
         }
+        EndCheckin();
         IsAwaitingTerminal = false;
         _terminalOrderId = null;
         _awaitingMethod = null;
@@ -888,10 +1048,24 @@ public partial class MainViewModel : ViewModelBase
             {
                 "FACE" => "FACE",
                 "PALM" => "PALM",
+                "CHECKIN" => "CHECKIN",
                 "CARD" or "CREDIT" or "DEBIT" => "CARD",
                 _ => null,
             };
             if (method is null) return;
+
+            // Check-in mode entry and its biometric pick take a different
+            // path: no tender is opened, the cashier keeps ringing.
+            if (method == "CHECKIN")
+            {
+                BeginCheckin();
+                return;
+            }
+            if (IsCheckinActive && method is "FACE" or "PALM")
+            {
+                LaunchCheckinBiometric(method);
+                return;
+            }
 
             // Idempotency: a spammed Face button (or the same press arriving
             // via both the notify callback and the trigger-variable poll) must
@@ -960,6 +1134,30 @@ public partial class MainViewModel : ViewModelBase
                 await _link!.SendAsync(tenderMessage);
                 OnUiThread(() => IsBusy = false);
             });
+            return;
+        }
+
+        if (m.Type == PosMessageTypes.CheckinReady)
+        {
+            if (!IsCheckinActive) return;
+            _checkinScanReady = true;
+            var who = string.IsNullOrWhiteSpace(m.CustomerLabel) ? "Customer" : m.CustomerLabel;
+            Status = $"{who} checked in — ring items, then Complete Payment";
+            Console.WriteLine($"[Register] CHECKIN_READY {m.OrderId}: {who} via {m.Method}");
+            Refresh();
+            return;
+        }
+
+        // The customer walked away from a check-in before the cashier finished
+        // (signed out / cancelled in WinkPay): drop check-in mode and put the
+        // terminal back to its idle screen; the basket stays.
+        if (m.Type == PosMessageTypes.PaymentResult && IsCheckinActive && !IsAwaitingTerminal
+            && m.OrderId == _checkinOrderId && m.Status is "CANCELLED" or "DECLINED")
+        {
+            Console.WriteLine($"[Register] check-in ended by the customer ({m.Status}) — leaving check-in mode");
+            EndCheckin();
+            Status = m.Status == "DECLINED" ? (m.Reason ?? "Check-in failed") : "Customer left check-in";
+            ResyncCart();
             return;
         }
 
@@ -1047,6 +1245,7 @@ public partial class MainViewModel : ViewModelBase
         IsAwaitingTerminal = false;
         _terminalOrderId = null;
         _awaitingMethod = null;
+        EndCheckin();
         IsBusy = false;
         ClearEntry();
         Status = "";
@@ -1074,6 +1273,7 @@ public partial class MainViewModel : ViewModelBase
         SubtotalCents = (long)Math.Round(Subtotal * 100m),
         TaxCents = (long)Math.Round(Tax * 100m),
         AmountCents = (long)Math.Round((Total - Savings) * 100m),
+        Checkin = IsCheckinActive ? true : null,
     };
 
     private string? _lastCartJson;

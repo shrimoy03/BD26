@@ -604,7 +604,7 @@ public sealed class JpxRestLink : ITerminalLink
             // route the sale to WinkPay or the EMV flow.
             var isTender = name == "PAYMENTSTATUS"
                 || (name == EventTransState && value?.Trim().ToLowerInvariant()
-                        is "face" or "palm" or "card" or "credit" or "debit");
+                        is "face" or "palm" or "checkin" or "card" or "credit" or "debit");
             if (isTender && !string.IsNullOrWhiteSpace(value))
             {
                 // The same button press also wrote the SetVariable trigger
@@ -1555,7 +1555,7 @@ public sealed class JpxRestLink : ITerminalLink
         {
             string? v = null;
             try { v = await GetVariableAsync(_stateVar); } catch (Exception) { }
-            if (v?.Trim().ToUpperInvariant() is "FACE" or "PALM")
+            if (v?.Trim().ToUpperInvariant() is "FACE" or "PALM" or "CHECKIN")
             {
                 Console.WriteLine($"[JpxRestLink] button write landed on {_stateVar} after {Environment.TickCount64 - started}ms — publishing now");
                 return;
@@ -1841,6 +1841,7 @@ public sealed class JpxRestLink : ITerminalLink
         {
             "FACE" => "FACE",
             "PALM" => "PALM",
+            "CHECKIN" => "CHECKIN",
             _ => null,
         };
         if (method is null) return false;
@@ -1868,7 +1869,7 @@ public sealed class JpxRestLink : ITerminalLink
             await Task.Delay(6000);
             if (_resultPoll is not null || TenderInFlight(method)) return;
             var current = await GetVariableAsync(_triggerVar);
-            if (current?.Trim().ToUpperInvariant() is "FACE" or "PALM")
+            if (current?.Trim().ToUpperInvariant() is "FACE" or "PALM" or "CHECKIN")
             {
                 await SetVariableAsync(_triggerVar, "none");
                 Console.WriteLine($"[JpxRestLink] {_triggerVar} cleared — the {method} press was not turned into a sale");
