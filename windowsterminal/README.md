@@ -47,12 +47,50 @@ link), so a mouse is enough to get out of the kiosk.
 ## Publish for the Windows all-in-one
 
 ```bash
-dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
-# output: bin/Release/net10.0/win-x64/publish/ — copy the folder, run MerchantTerminal.exe
+dotnet publish -c Release -r win-x64 -o publish/win-x64
+cd publish && zip -r MerchantTerminal-win-x64.zip win-x64 -x '*.pdb'
 ```
 
-No .NET install is needed on the target machine. Fonts are bundled; the app
-needs no internet access.
+The csproj pins the Windows publish to a **self-contained folder** (never a
+single-file exe — see below). No .NET install is needed on the target
+machine. Fonts are bundled; the app needs no internet access.
+
+### Installing so Windows lets a standard user run it
+
+If the register launches only "as administrator" (or from a taskbar pin it is
+"blocked by your administrator"), that is AppLocker / Software Restriction
+Policy plus SmartScreen on the store PC, not the app. Do all of these:
+
+1. **Unblock the download.** A zip from a browser or Teams carries the
+   Mark-of-the-Web and Explorer stamps it on every extracted file. Before
+   extracting, right-click the zip → Properties → tick **Unblock** (or in
+   PowerShell `Unblock-File .\MerchantTerminal-win-x64.zip`).
+2. **Install under Program Files.** Extract to
+   `C:\Program Files\WinkPay Register\` (one-time admin copy). The default
+   AppLocker/SRP rules allow any user to run what lives under Program Files
+   and Windows, and block executables under Downloads, Desktop and `%TEMP%`.
+3. **Pin from there.** Start `MerchantTerminal.exe` from that folder, then pin
+   it. A pin made from an exe on the Desktop keeps pointing at the blocked
+   location.
+4. **Keep it a folder build.** The single-file build unpacks
+   SkiaSharp/HarfBuzz into `%TEMP%\.net\MerchantTerminal\` on every launch,
+   and step 2's rules block that extraction for non-admins.
+
+The exe carries a company/product/version block and an `asInvoker` manifest,
+so it never asks for elevation and Defender/SmartScreen see a named product.
+The one remaining upgrade is an **Authenticode signature**: SmartScreen stops
+warning entirely once the exe is signed with a certificate that has built up
+reputation (an EV cert is trusted immediately; Azure Trusted Signing is the
+cheap route). With a `.pfx` in hand, sign after publish:
+
+```powershell
+signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
+  /f wink-codesign.pfx /p <password> publish\win-x64\MerchantTerminal.exe
+```
+
+(or `osslsigncode` on macOS with the same inputs). If the store's IT owns an
+AppLocker policy, a **publisher rule** for that certificate — or a path rule
+for `C:\Program Files\WinkPay Register\*` — is the durable fix.
 
 ## Terminal link (protocol with the Android app)
 

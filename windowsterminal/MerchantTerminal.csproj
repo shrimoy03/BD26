@@ -1,10 +1,39 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\bloomingdales.ico</ApplicationIcon>
+
+    <!-- File metadata Windows shows in Properties > Details. SmartScreen,
+         Defender and AppLocker publisher rules all weigh an exe with a real
+         company / product / version above an anonymous one. -->
+    <AssemblyName>MerchantTerminal</AssemblyName>
+    <AssemblyTitle>WinkPay Register</AssemblyTitle>
+    <Product>WinkPay Register (Bloomingdale's BD26 demo)</Product>
+    <Company>Wink</Company>
+    <Authors>Wink</Authors>
+    <Copyright>Copyright © Wink 2026</Copyright>
+    <Description>Register application driving the PAX customer terminal and the WinkPay app.</Description>
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
+    <NeutralLanguage>en-US</NeutralLanguage>
+  </PropertyGroup>
+
+  <!-- Windows publish defaults: a plain folder, never a self-extracting
+       single file. Single-file builds unpack SkiaSharp/HarfBuzz into
+       %TEMP%\.net at every launch, and AppLocker / SRP default rules block
+       standard users from executing anything under %TEMP% — which is why the
+       app "only runs as admin". A folder under Program Files needs no
+       extraction and matches the default allow rules. -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
 
   <ItemGroup>
