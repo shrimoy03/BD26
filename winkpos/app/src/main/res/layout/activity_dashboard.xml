@@ -416,6 +416,23 @@
                 android:layout_marginTop="2dp"
                 android:orientation="vertical" />
 
+            <!-- Totals: in check-in mode this block is moved below the
+                 flexible gap (no Pay button there) so the total sits at the
+                 bottom of the page. -->
+            <LinearLayout
+                android:id="@+id/totalsBlock"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+            <View
+                android:id="@+id/totalsDivider"
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginBottom="8dp"
+                android:background="@color/text_dark"
+                android:visibility="gone" />
+
             <LinearLayout
                 android:id="@+id/subtotalRow"
                 android:layout_width="match_parent"
@@ -511,12 +528,15 @@
             </LinearLayout>
 
             <LinearLayout
+                android:id="@+id/totalRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
+                android:gravity="center_vertical"
                 android:orientation="horizontal">
 
                 <TextView
+                    android:id="@+id/totalLabel"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
@@ -532,6 +552,7 @@
                     android:textColor="@color/text_dark"
                     android:textSize="20sp"
                     android:textStyle="bold" />
+            </LinearLayout>
             </LinearLayout>
 
             <!-- Register mode: the payment is confirmed on one big card — the
@@ -659,10 +680,10 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="12dp"
                         android:layout_weight="1"
-                        android:lineSpacingExtra="3dp"
+                        android:lineSpacingExtra="2dp"
                         android:text="@string/checkin_note"
                         android:textColor="@color/text_dark"
-                        android:textSize="15sp" />
+                        android:textSize="14sp" />
                 </LinearLayout>
             </LinearLayout>
 

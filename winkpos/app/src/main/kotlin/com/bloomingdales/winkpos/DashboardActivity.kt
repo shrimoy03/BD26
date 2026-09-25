@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -343,6 +344,38 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         renderTotals()
     }
 
+    /**
+     * Check-in mode has no Pay button, so the totals move below the flexible
+     * gap and anchor the bottom of the page (subtotal, rule, large TOTAL).
+     * Otherwise they sit under the items as usual.
+     */
+    private fun layoutTotalsForCheckin(checkin: Boolean) {
+        val block = findViewById<View>(R.id.totalsBlock)
+        val parent = block.parent as ViewGroup
+        // Normal: just above the big card. Check-in: just above the (hidden)
+        // Pay button, i.e. after the flexible gap, at the foot of the page.
+        val anchor: View = if (checkin) payButton else findViewById(R.id.bigCardBlock)
+        if (parent.indexOfChild(block) != parent.indexOfChild(anchor) - 1) {
+            parent.removeView(block)
+            parent.addView(block, parent.indexOfChild(anchor))
+        }
+        findViewById<View>(R.id.totalsDivider).visibility = if (checkin) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.subtotalRow).visibility = if (checkin) View.VISIBLE else View.GONE
+        val label = findViewById<TextView>(R.id.totalLabel)
+        val value = findViewById<TextView>(R.id.totalValue)
+        if (checkin) {
+            label.letterSpacing = 0.08f
+            label.textSize = 18f
+            value.textSize = 40f
+            value.setTypeface(android.graphics.Typeface.SERIF, android.graphics.Typeface.NORMAL)
+        } else {
+            label.letterSpacing = 0f
+            label.textSize = 20f
+            value.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+            value.textSize = 20f
+        }
+    }
+
     private fun renderItems() {
         itemsContainer.removeAllViews()
         val inflater = LayoutInflater.from(this)
@@ -362,8 +395,10 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
                 CheckinSession.firstName.uppercase().ifEmpty { "LOYALLIST MEMBER" }
             findViewById<TextView>(R.id.bigCardNumber).text =
                 CheckinSession.preferredCard?.let { "•••• ${it.last4}" } ?: ""
+            layoutTotalsForCheckin(checkinMode)
             return
         }
+        layoutTotalsForCheckin(false)
         findViewById<View>(R.id.subtotalRow).visibility = View.VISIBLE
         findViewById<View>(R.id.taxesRow).visibility = View.VISIBLE
         findViewById<View>(R.id.preferredRow).visibility = View.VISIBLE
