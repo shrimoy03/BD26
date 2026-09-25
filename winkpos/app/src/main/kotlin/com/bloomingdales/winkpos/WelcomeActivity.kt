@@ -227,6 +227,7 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
     override fun onCancelPayment(orderId: String?) {
         captureOrderId = null
         pendingBiometric = null
+        CheckinSession.clear()
         handler.removeCallbacks(startPendingCapture)
         cancelCaptureIfOpen("register cancelled the sale")
         hideRetryPanel()
@@ -315,6 +316,9 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
             ensureCameraPermission()
             return
         }
+        // Every scan identifies afresh — never carry the last customer's
+        // session into (or past a failure of) this one.
+        CheckinSession.clear()
         checkinInFlight = true
         captureOpen = true
         statusText.visibility = View.INVISIBLE

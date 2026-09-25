@@ -7,6 +7,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.bloomingdales.winkpos.CheckinSession
 import androidx.core.app.NotificationCompat
 import com.bloomingdales.winkpos.BuildConfig
 import java.util.concurrent.CopyOnWriteArrayList
@@ -36,6 +37,12 @@ object PosLink {
         fun onLinkStateChanged(connected: Boolean) {}
         fun onStartPayment(orderId: String, amountCents: Long) {}
         fun onCancelPayment(orderId: String?) {}
+        /**
+         * A fresh biometric capture is about to launch for [orderId]. The
+         * previous customer's session has just been wiped — any screen still
+         * showing it must go, so nothing of theirs flashes for the next scan.
+         */
+        fun onCaptureLaunching(orderId: String) {}
         /** Check-in mode: the cashier rang more items; the sale's amount moved. */
         fun onAmountChanged(orderId: String, amountCents: Long) {}
         /** Check-in mode: the cashier pressed Complete Payment — charge now. */
@@ -228,6 +235,12 @@ object PosLink {
                     } else {
                         lastLaunchOrderId = orderId
                         lastLaunchAtMs = now
+                        // Switching tender (face -> palm, a new check-in, a new
+                        // sale) means a new identification: drop whoever was
+                        // checked in before the camera opens so their name and
+                        // card never show for the next person.
+                        CheckinSession.clear()
+                        listeners.forEach { it.onCaptureLaunching(orderId) }
                         appContext?.let { ctx -> launchCapture(ctx, biometric) }
                     }
                 }

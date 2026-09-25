@@ -293,6 +293,17 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         renderTotals()
     }
 
+    override fun onCaptureLaunching(orderId: String) {
+        // A new scan is starting (tender switched, or a new customer): this
+        // confirmation page belongs to the previous session — close it now,
+        // unless a charge is already on its way to Wink.
+        if (paying) return
+        autoPayRunnable?.let { mainHandler.removeCallbacks(it) }
+        autoPayRunnable = null
+        android.util.Log.d("Dashboard", "new capture launching for $orderId — closing stale confirmation page")
+        finish()
+    }
+
     override fun onAmountChanged(orderId: String, amountCents: Long) {
         renderItems()
         renderTotals()
