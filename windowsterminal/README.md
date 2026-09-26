@@ -358,6 +358,27 @@ the demo down unless the terminal is prepared:
 
    The register's subscription survives a PXRRS restart.
 
+   **PXRRS will not start after a reboot** (register shows *Connection refused
+   — nothing is listening on that port*; the PxRetailerRestService screen's
+   Save → Yes toasts `Failed to restart the service. Error:
+   java.lang.IllegalStateException: Expected BEGIN_OBJECT but was STRING at
+   line 1 column 1 path $`): a JSON file PXRRS persists (its subscription /
+   settings store) was left holding a bare string when the unit went down, and
+   Gson refuses it at every start. PXRRS is not debuggable and writes no log,
+   so the file cannot be repaired — reset it (seen 2026-09-25 on A380
+   3530000633 after an unplanned reboot):
+
+   ```bash
+   adb shell pm clear com.pax.multilane.pxretailerrestservice
+   adb shell am start -W -n com.pax.multilane.pxretailerrestservice/com.pax.multilane.pxrestservice.ws.MainActivity
+   # on the terminal: Select Binding Address → "Any host", Port 9090, SAVE → YES
+   # (a fresh PXRRS binds to 127.0.0.1 only, which the register cannot reach)
+   adb shell "cat /proc/net/tcp | awk '\$4==\"0A\"{print \$2}' | grep -i :2382"   # want 00000000:2382, not 0100007F:2382
+   ```
+
+   The register re-claims and re-subscribes on its own within a few minutes;
+   nothing else on the terminal is touched.
+
 The register writes a daily log to `%APPDATA%\MerchantTerminal\logs\` (macOS:
 `~/Library/Application Support/MerchantTerminal/logs/`); every failed terminal
 call is followed by a `DIAGNOSIS` line naming which of these it was.
