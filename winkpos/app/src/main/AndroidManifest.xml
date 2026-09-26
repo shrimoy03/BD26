@@ -60,14 +60,21 @@
             tools:ignore="LockedOrientationActivity" />
 
         <!-- Starts the register link on boot and after an in-place update,
-             so a terminal needs no manual launch after its first one. -->
+             so a terminal needs no manual launch after its first one.
+
+             Deliberately NOT directBootAware and NOT on LOCKED_BOOT_COMPLETED:
+             a process started in the direct-boot phase gets only
+             direct-boot-aware components, so ML Kit's init provider never
+             runs and every face scan fails with "MlKitContext has not been
+             initialized" until the process dies (PAX A380, Android 14,
+             file-based encryption — after every reboot). BOOT_COMPLETED
+             arrives seconds later on an unlocked kiosk and starts a whole
+             process. -->
         <receiver
             android:name=".link.BootReceiver"
-            android:exported="true"
-            android:directBootAware="true">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
             <intent-filter>

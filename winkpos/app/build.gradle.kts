@@ -89,7 +89,7 @@ android {
 }
 
 dependencies {
-    implementation("com.wink:winkpay-sdk:1.7.13")
+    implementation("com.wink:winkpay-sdk:1.7.14")
 
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-ktx:1.9.0")
