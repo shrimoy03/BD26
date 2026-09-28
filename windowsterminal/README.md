@@ -232,8 +232,16 @@ The register handles this end to end:
 Hotspots that hand out a real subnet (Android phones, iPhones on IPv4
 carriers: `172.20.10.x`) work over IPv4 exactly like store Wi-Fi. A Windows
 PC on an IPv6-only hotspot gets **no IPv4 at all** (no translator on Wi-Fi),
-so IPv6 is the only path there; allow inbound TCP 8080/8181 and outbound UDP
-8182 through Windows Firewall on the *Public* profile the hotspot lands in.
+so IPv6 is the only path there.
+
+**Windows Firewall is the usual reason "PxRetailer works but the WebSocket
+doesn't"** on a PC: the register's own calls to the terminal go *out* and are
+allowed, while the terminal's connections *in* — the WinkPay socket on 8181
+and, silently, PXRRS's notify on 8080 — are blocked on the Public profile a
+hotspot lands in, and a standard user cannot approve the firewall prompt.
+Run `Allow-Register-Firewall.cmd` (shipped next to the exe) once as
+Administrator; it adds inbound rules for TCP 8080, TCP 8181 and UDP 8182 on
+every profile. Then restart the register and press Face once on the terminal.
 
 ## Setup screen (per-register configuration)
 

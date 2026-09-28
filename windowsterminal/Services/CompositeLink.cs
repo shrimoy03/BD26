@@ -104,9 +104,11 @@ public sealed class CompositeLink : ITerminalLink
                     // PxRetailer has been backgrounded but nobody told WinkPay to
                     // start — the customer sees WinkPay's idle page and nothing
                     // happens. Say so instead of letting the sale sit there.
-                    LinkHealth.Report(
-                        "WinkPay app is not connected to this register (no WebSocket client) — "
-                        + "check Windows Firewall allows port 8181 and the app's register address");
+                    LinkHealth.Report(OperatingSystem.IsWindows()
+                        ? "WinkPay app is not connected to this register (no WebSocket client) — "
+                          + "run Allow-Register-Firewall.cmd once as Administrator (inbound 8080/8181 are blocked on hotspot/Public networks)"
+                        : "WinkPay app is not connected to this register (no WebSocket client) — "
+                          + "check the app's register address and that port 8181 is reachable");
                 }
                 return winkPayOk || yieldedOk;
             case PosMessageTypes.StartPayment:

@@ -43,6 +43,8 @@
   <ItemGroup>
     <!-- PXRRS mutual-TLS client certificate (see certs/README.md) -->
     <None Include="certs\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- One-time Windows Firewall rules for the inbound ports (see firewall/) -->
+    <None Include="firewall\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
