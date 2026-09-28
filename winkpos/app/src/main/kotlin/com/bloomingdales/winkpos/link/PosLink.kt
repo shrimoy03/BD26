@@ -190,6 +190,7 @@ object PosLink {
         val orderId = RegisterSale.orderId ?: return
         val amount = chargedCents ?: RegisterSale.amountCents
         RegisterSale.clear()
+        lastLaunchOrderId = null // the sale is over here; a retry is a fresh launch
         transport?.send(
             PosMessage(
                 type = PosMessage.TYPE_PAYMENT_RESULT,
@@ -215,6 +216,11 @@ object PosLink {
                 }
                 val checkin = message.checkin == true
                 Log.d(TAG, "START_PAYMENT order=$orderId amount=$amount method=${message.method} checkin=$checkin")
+                // Only a repeat of an order that is STILL pending is a
+                // duplicate. Once this side reported a result (the customer
+                // cancelled the scan) the sale is over here, and the register's
+                // retry — same order id, seconds later — must launch again.
+                val stillPending = RegisterSale.orderId == orderId
                 RegisterSale.set(orderId, amount, checkin)
                 listeners.forEach { it.onStartPayment(orderId, amount) }
 
@@ -229,9 +235,9 @@ object PosLink {
                 val biometric = message.method?.lowercase()
                 if (biometric == "face" || biometric == "palm") {
                     val now = android.os.SystemClock.elapsedRealtime()
-                    if (orderId == lastLaunchOrderId && now - lastLaunchAtMs < LAUNCH_DEDUPE_MS) {
-                        Log.d(TAG, "duplicate START_PAYMENT for $orderId ignored " +
-                            "(${now - lastLaunchAtMs}ms since launch)")
+                    if (stillPending && orderId == lastLaunchOrderId && now - lastLaunchAtMs < LAUNCH_DEDUPE_MS) {
+                        Log.w(TAG, "duplicate START_PAYMENT for $orderId ignored " +
+                            "(${now - lastLaunchAtMs}ms since launch, capture still pending)")
                     } else {
                         lastLaunchOrderId = orderId
                         lastLaunchAtMs = now

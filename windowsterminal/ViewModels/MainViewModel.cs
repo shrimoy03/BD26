@@ -209,6 +209,15 @@ public partial class MainViewModel : ViewModelBase
 
     private string? _checkinOrderId;
     private string? _checkinMethod;
+    /// <summary>
+    /// Bumped for every launch sent to the terminal within one sale, so a
+    /// retry after a cancelled scan never reuses an order id the app may
+    /// still treat as "already launched".
+    /// </summary>
+    private int _launchAttempt;
+    private string NextOrderId(string suffix) => ++_launchAttempt == 1
+        ? $"{TxnId}-{suffix}"
+        : $"{TxnId}-{suffix}r{_launchAttempt}";
     private bool _checkinScanReady;
     private long _checkinLaunchedMs;
 
@@ -827,7 +836,7 @@ public partial class MainViewModel : ViewModelBase
 
         if (_link is { IsConnected: true })
         {
-            _terminalOrderId = $"{TxnId}-{Payments.Count + 1}";
+            _terminalOrderId = NextOrderId($"{Payments.Count + 1}");
             _awaitingMethod = method;
             IsAwaitingTerminal = true;
             _awaitingSinceMs = Environment.TickCount64;
@@ -908,7 +917,7 @@ public partial class MainViewModel : ViewModelBase
         IsCheckinActive = true;
         _checkinScanReady = false;
         _checkinMethod = null;
-        _checkinOrderId = $"{TxnId}-CI";
+        _checkinOrderId = NextOrderId("CI");
         Status = "Customer is checking in — showing Face / Palm on the terminal";
         Console.WriteLine($"[Register] CHECK-IN started for {_checkinOrderId}");
         Refresh();
@@ -1104,7 +1113,7 @@ public partial class MainViewModel : ViewModelBase
             // follow along on the register instead of dropping the event.
             if (!IsAwaitingTerminal)
             {
-                _terminalOrderId = $"{TxnId}-{Payments.Count + 1}";
+                _terminalOrderId = NextOrderId($"{Payments.Count + 1}");
                 IsAwaitingTerminal = true;
                 _awaitingSinceMs = Environment.TickCount64;
                 Stage = RegisterStage.CardTender;
@@ -1230,6 +1239,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void NewSale()
     {
+        _launchAttempt = 0;
         _flowTimer.Stop();
         _flowTimerAction = null;
         _signatureTimer.Stop();
