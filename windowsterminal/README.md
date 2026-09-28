@@ -60,7 +60,18 @@ machine. Fonts are bundled; the app needs no internet access.
 
 If the register launches only "as administrator" (or from a taskbar pin it is
 "blocked by your administrator"), that is AppLocker / Software Restriction
-Policy plus SmartScreen on the store PC, not the app. Do all of these:
+Policy plus SmartScreen on the store PC, not the app.
+
+**Shortest path:** extract the zip anywhere, right-click
+`Install-Register.cmd` → *Run as administrator* — once per new build. It
+copies the folder to `C:\Program Files\WinkPay Register`, strips the
+Mark-of-the-Web from every file (SmartScreen only inspects files that carry
+it, and a zip from a browser / Slack / Drive always does), creates Start Menu
+and Desktop shortcuts to the installed exe, and adds the firewall rules. Then
+launch from the shortcut as a normal user and pin the taskbar from that
+running icon. The register itself never needs elevation.
+
+Doing it by hand instead:
 
 1. **Unblock the download.** A zip from a browser or Teams carries the
    Mark-of-the-Web and Explorer stamps it on every extracted file. Before

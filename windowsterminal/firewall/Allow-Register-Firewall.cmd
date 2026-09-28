@@ -14,11 +14,12 @@ rem Adjust EXE if the register lives somewhere else.
 
 set "EXE=%~dp0MerchantTerminal.exe"
 if not exist "%EXE%" set "EXE=%ProgramFiles%\WinkPay Register\MerchantTerminal.exe"
+set "QUIET=%~1"
 
 net session >nul 2>&1
 if %errorlevel% neq 0 (
   echo This must run as Administrator. Right-click the file and choose "Run as administrator".
-  pause
+  if /i not "%QUIET%"=="/quiet" pause
   exit /b 1
 )
 
@@ -38,4 +39,4 @@ netsh advfirewall firewall show rule name="WinkPay Register (notify 8080)" | fin
 netsh advfirewall firewall show rule name="WinkPay Register (WebSocket 8181)" | findstr /i "Enabled Profiles LocalPort"
 echo.
 echo Done. Restart the register, then on the terminal press Face once to confirm.
-pause
+if /i not "%QUIET%"=="/quiet" pause
