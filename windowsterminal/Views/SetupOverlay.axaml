@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:MerchantTerminal.ViewModels"
+             xmlns:svc="using:MerchantTerminal.Services"
              x:Class="MerchantTerminal.Views.SetupOverlay"
              x:DataType="vm:MainViewModel">
 
@@ -105,8 +106,39 @@
                                 <StackPanel Grid.Column="0" Spacing="6">
                                     <TextBlock Text="IP address" FontSize="12"
                                                Foreground="{DynamicResource Dim}" />
-                                    <TextBox Classes="pos" PlaceholderText="192.168.1.234"
-                                             Text="{Binding Setup.TerminalHost}" />
+                                    <Grid ColumnDefinitions="*,8,Auto">
+                                        <TextBox Grid.Column="0" Classes="pos" PlaceholderText="192.168.1.234 or an IPv6 address"
+                                                 Text="{Binding Setup.TerminalHost}" />
+                                        <Button Grid.Column="2" Classes="ghost" Height="40" Padding="14,0"
+                                                Content="{Binding Setup.FindLabel}"
+                                                IsEnabled="{Binding !Setup.IsFinding}"
+                                                Command="{Binding Setup.FindTerminalsCommand}" />
+                                    </Grid>
+                                    <!-- Found on the network: one tap fills the address that reaches it -->
+                                    <StackPanel Spacing="6" IsVisible="{Binding Setup.HasDiscoveredTerminals}">
+                                        <TextBlock Text="Found on the network" FontSize="11"
+                                                   Foreground="{DynamicResource Dim}" Margin="0,4,0,0" />
+                                        <ItemsControl ItemsSource="{Binding Setup.DiscoveredTerminals}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="svc:DiscoveredTerminal">
+                                                    <Button Classes="ghost" Height="34" Padding="12,0" Margin="0,0,8,6"
+                                                            Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).Setup.UseDiscoveredCommand}"
+                                                            CommandParameter="{Binding}">
+                                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                                            <TextBlock Text="{Binding Label}" FontSize="12" />
+                                                            <TextBlock Classes="mono" Text="{Binding Host}" FontSize="11"
+                                                                       Foreground="{DynamicResource Dim}" />
+                                                        </StackPanel>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
                                     <!-- Recently connected: one tap fills the address -->
                                     <StackPanel Spacing="6" IsVisible="{Binding Setup.HasRecentTerminals}">
                                         <TextBlock Text="Recently connected" FontSize="11"

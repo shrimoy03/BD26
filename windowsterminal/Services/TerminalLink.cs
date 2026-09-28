@@ -1,5 +1,6 @@
 using System;
 using System.Net;
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
@@ -59,14 +60,32 @@ public sealed class TerminalLink : ITerminalLink
     {
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
-        builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+        // [::] with dual-mode: the app reaches us over IPv4 on a LAN and over
+        // IPv6 on a hotspot whose IPv4 is a per-client translator.
+        builder.WebHost.UseUrls($"http://[::]:{port}");
 
         _app = builder.Build();
         _app.UseWebSockets();
         _app.Map("/pos", HandleClientAsync);
 
         await _app.StartAsync();
-        Console.WriteLine($"[TerminalLink] listening on ws://0.0.0.0:{port}/pos");
+        Console.WriteLine($"[TerminalLink] listening on ws://[::]:{port}/pos (IPv4 + IPv6)");
+    }
+
+    /// <summary>
+    /// IPv4: exact match. IPv6: same /64 — the terminal connects from a
+    /// temporary (privacy) address that differs from the stable one we drive.
+    /// </summary>
+    private static bool SameTerminalHost(IPAddress? remote, string requiredHost)
+    {
+        if (remote is null) return false;
+        if (!IPAddress.TryParse(PosSettings.NormalizeHost(requiredHost), out var required))
+            return remote.ToString().Equals(requiredHost, StringComparison.OrdinalIgnoreCase);
+        if (required.IsIPv4MappedToIPv6) required = required.MapToIPv4();
+        if (remote.Equals(required)) return true;
+        return remote.AddressFamily == AddressFamily.InterNetworkV6
+            && required.AddressFamily == AddressFamily.InterNetworkV6
+            && TerminalDiscovery.SamePrefix64(remote, required);
     }
 
     private async Task HandleClientAsync(HttpContext context)
@@ -91,7 +110,7 @@ public sealed class TerminalLink : ITerminalLink
             refusal = $"terminal {clientSerial} is not the one this register drives ({required})";
         }
         else if (string.IsNullOrEmpty(clientSerial) && !string.IsNullOrEmpty(requiredHost)
-            && !remote.Equals(requiredHost, StringComparison.OrdinalIgnoreCase)
+            && !SameTerminalHost(remoteAddress, requiredHost)
             && !IPAddress.IsLoopback(remoteAddress ?? IPAddress.None))
         {
             refusal = $"client at {remote} sent no terminal serial and is not the driven terminal ({requiredHost})";

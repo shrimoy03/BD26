@@ -15,6 +15,9 @@
          SYSTEM_ALERT_WINDOW is the BAL exemption used as a secondary path. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Discovery responder: Wi-Fi drivers filter broadcast/multicast unless a multicast lock is held. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!-- Demo: plain ws:// to the register (localhost via adb reverse, or LAN). -->

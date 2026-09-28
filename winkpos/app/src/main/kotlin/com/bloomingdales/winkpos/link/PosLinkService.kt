@@ -42,6 +42,14 @@ class PosLinkService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+        // Lets a register find this terminal by serial instead of by typed IP
+        // — essential on a hotspot, where the only usable address is IPv6.
+        DiscoveryResponder.start(this)
+    }
+
+    override fun onDestroy() {
+        DiscoveryResponder.stop()
+        super.onDestroy()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY

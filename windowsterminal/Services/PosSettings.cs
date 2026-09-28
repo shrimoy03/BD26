@@ -294,9 +294,24 @@ public sealed class PosSettings
     /// <summary>REST base for jpxss mode, from the host/port/TLS fields.</summary>
     public string DefaultBaseUrl()
     {
-        var host = string.IsNullOrWhiteSpace(TerminalHost) ? "127.0.0.1" : TerminalHost.Trim();
+        var host = string.IsNullOrWhiteSpace(TerminalHost) ? "127.0.0.1" : FormatHost(TerminalHost);
         var scheme = UseTls ? "https" : "http";
         return $"{scheme}://{host}:{TerminalPort}";
+    }
+
+    /// <summary>A host as it goes into a URL: IPv6 literals get their brackets.</summary>
+    public static string FormatHost(string host)
+    {
+        var h = NormalizeHost(host);
+        return h.Contains(':') ? $"[{h}]" : h;
+    }
+
+    /// <summary>A host as it is stored and compared: trimmed, no brackets, no zone id.</summary>
+    public static string NormalizeHost(string? host)
+    {
+        var h = (host ?? "").Trim();
+        if (h.StartsWith('[') && h.EndsWith(']')) h = h[1..^1];
+        return h;
     }
 
     /// <summary>
@@ -309,6 +324,7 @@ public sealed class PosSettings
         var host = string.IsNullOrWhiteSpace(NotifyHost)
             ? LocalAddressFor(TerminalHost, TerminalPort) ?? "127.0.0.1"
             : NotifyHost.Trim();
+        host = FormatHost(host);
         var scheme = NotifyUseTls ? "https" : "http";
         var path = string.IsNullOrWhiteSpace(NotifyPath) ? "/notify" : NotifyPath.Trim();
         if (!path.StartsWith('/')) path = "/" + path;
@@ -329,12 +345,18 @@ public sealed class PosSettings
 
         try
         {
-            using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            socket.Connect(remoteHost.Trim(), remotePort <= 0 ? DefaultPxrrsPort : remotePort);
+            var remote = NormalizeHost(remoteHost);
+            // Same family as the terminal: an IPv6 terminal (hotspot on an
+            // IPv6-only carrier) must be given an IPv6 address to call back.
+            var family = IPAddress.TryParse(remote, out var parsed)
+                ? parsed.AddressFamily
+                : AddressFamily.InterNetwork;
+            using var socket = new Socket(family, SocketType.Dgram, ProtocolType.Udp);
+            socket.Connect(remote, remotePort <= 0 ? DefaultPxrrsPort : remotePort);
             var local = (socket.LocalEndPoint as IPEndPoint)?.Address;
             if (local is not null && !IPAddress.IsLoopback(local) && !IsLinkLocal(local))
             {
-                return local.ToString();
+                return PreferStable(local).ToString();
             }
         }
         catch (SocketException)
@@ -343,6 +365,40 @@ public sealed class PosSettings
         }
 
         return FirstLanAddress();
+    }
+
+    /// <summary>
+    /// The OS routes outbound IPv6 from a temporary (privacy) address that
+    /// rotates daily. For an address the terminal will keep calling back for
+    /// hours, prefer the stable one on the same /64 when the platform can tell
+    /// them apart (Windows can; macOS/Linux report nothing and keep the OS pick).
+    /// </summary>
+    private static IPAddress PreferStable(IPAddress chosen)
+    {
+        if (chosen.AddressFamily != AddressFamily.InterNetworkV6) return chosen;
+        try
+        {
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                IPInterfaceProperties props;
+                try { props = nic.GetIPProperties(); } catch { continue; }
+                var addrs = props.UnicastAddresses;
+                if (!addrs.Any(u => u.Address.Equals(chosen))) continue;
+                foreach (var u in addrs)
+                {
+                    var a = u.Address;
+                    if (a.AddressFamily != AddressFamily.InterNetworkV6 || a.IsIPv6LinkLocal) continue;
+                    if (!TerminalDiscovery.SamePrefix64(a, chosen)) continue;
+                    bool temporary;
+                    try { temporary = u.SuffixOrigin == SuffixOrigin.Random; }
+                    catch (PlatformNotSupportedException) { return chosen; }
+                    if (!temporary) return a;
+                }
+                return chosen;
+            }
+        }
+        catch { /* best effort */ }
+        return chosen;
     }
 
     /// <summary>Best-guess LAN address: an up, non-virtual NIC with a gateway.</summary>
@@ -365,13 +421,27 @@ public sealed class PosSettings
                     nic.NetworkInterfaceType == NetworkInterfaceType.Ethernet descending
             select addr.Address.ToString();
 
-        return candidates.FirstOrDefault();
+        // No usable IPv4 anywhere (IPv6-only hotspot): fall back to a global IPv6.
+        var v6 =
+            from nic in NetworkInterface.GetAllNetworkInterfaces()
+            where nic.OperationalStatus == OperationalStatus.Up
+                  && nic.NetworkInterfaceType != NetworkInterfaceType.Loopback
+                  && nic.NetworkInterfaceType != NetworkInterfaceType.Tunnel
+            from addr in nic.GetIPProperties().UnicastAddresses
+            where addr.Address.AddressFamily == AddressFamily.InterNetworkV6
+                  && !addr.Address.IsIPv6LinkLocal
+                  && !IPAddress.IsLoopback(addr.Address)
+            select addr.Address.ToString();
+
+        return candidates.FirstOrDefault() ?? v6.FirstOrDefault();
     }
 
-    private static bool IsLinkLocal(IPAddress address)
+    /// <summary>IPv4 169.254/16, IPv6 fe80::/10, or a hotspot's 192.0.0.x translator address.</summary>
+    public static bool IsLinkLocal(IPAddress address)
     {
+        if (address.IsIPv6LinkLocal) return true;
         var b = address.GetAddressBytes();
-        return b.Length == 4 && b[0] == 169 && b[1] == 254;
+        return b.Length == 4 && ((b[0] == 169 && b[1] == 254) || TerminalDiscovery.IsHotspotTranslator(address));
     }
 }
 

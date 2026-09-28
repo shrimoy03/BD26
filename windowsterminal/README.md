@@ -203,6 +203,38 @@ node --experimental-websocket tools/fake-terminal.mjs
 
 Connects to the register and auto-approves any `START_PAYMENT` after 1.5 s.
 
+## Phone hotspots (register + terminal on a hotspot)
+
+A hotspot from a phone on an **IPv6-only carrier** (T-Mobile iPhones, for
+one) is not a LAN. Every client gets a private `192.0.0.x/32` translator
+address (`ifconfig` shows netmask `0xffffffff`); IPv4 between clients is dead
+— even the gateway does not answer ping, and the register's first call fails
+with *Address already in use*. The hotspot's IPv6 `/64` **is** on-link and
+works, and PXRRS ("Any host") already listens on IPv6.
+
+The register handles this end to end:
+
+- **Find terminals** in Terminal setup sends a probe to the IPv4 broadcast
+  address and the IPv6 all-nodes group on every interface (UDP 8182). The
+  WinkPay app's discovery responder answers with serial, model and addresses;
+  the register keeps the address family that actually routed and fills the
+  IP box (an IPv6 literal when that is the only path). With one terminal on
+  the network it is selected automatically — just Save & reconnect.
+- IPv6 hosts are bracketed in every URL, the callback advertised to PXRRS
+  and the address written to `STR.TEXT_12` are IPv6 when the terminal is, and
+  both listeners (notify 8080, WebSocket 8181) bind dual-stack.
+- Terminal isolation on the WebSocket compares IPv6 clients by `/64`, since
+  Android connects from a rotating temporary address, not the stable one the
+  register drives. The serial check is unchanged.
+- The callback address is re-published every few minutes, so the OS rotating
+  its temporary IPv6 (Windows/macOS do this daily) heals itself.
+
+Hotspots that hand out a real subnet (Android phones, iPhones on IPv4
+carriers: `172.20.10.x`) work over IPv4 exactly like store Wi-Fi. A Windows
+PC on an IPv6-only hotspot gets **no IPv4 at all** (no translator on Wi-Fi),
+so IPv6 is the only path there; allow inbound TCP 8080/8181 and outbound UDP
+8182 through Windows Firewall on the *Public* profile the hotspot lands in.
+
 ## Setup screen (per-register configuration)
 
 Press **F9** to open Terminal setup.

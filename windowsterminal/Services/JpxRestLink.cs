@@ -129,7 +129,7 @@ public sealed class JpxRestLink : ITerminalLink
         {
             try
             {
-                var host = new Uri(_baseUrl).Host;
+                var host = PosSettings.NormalizeHost(new Uri(_baseUrl).Host);
                 return host is "127.0.0.1" or "localhost" ? null : host;
             }
             catch (UriFormatException) { return null; }
@@ -2105,7 +2105,7 @@ public sealed class JpxRestLink : ITerminalLink
         try
         {
             using var tcp = new System.Net.Sockets.TcpClient();
-            var connect = tcp.ConnectAsync(uri.Host, uri.Port);
+            var connect = tcp.ConnectAsync(uri.IdnHost, uri.Port);
             var done = await Task.WhenAny(connect, Task.Delay(2500));
             if (done != connect)
             {

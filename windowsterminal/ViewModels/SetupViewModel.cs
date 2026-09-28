@@ -121,6 +121,69 @@ public partial class SetupViewModel : ViewModelBase
         Rescan();
     }
 
+    // ----- discovery -----
+
+    /// <summary>Terminals that answered the last Find, with the address that reaches them.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<DiscoveredTerminal> DiscoveredTerminals { get; } = new();
+
+    public bool HasDiscoveredTerminals => DiscoveredTerminals.Count > 0;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FindLabel))]
+    public partial bool IsFinding { get; set; }
+
+    public string FindLabel => IsFinding ? "Finding…" : "Find terminals";
+
+    /// <summary>
+    /// Probe every local link (IPv4 broadcast + IPv6 all-nodes) for WinkPay
+    /// terminals. Works on a phone hotspot where IPv4 between clients is dead
+    /// and the only usable address is a 39-character IPv6 nobody wants to type.
+    /// </summary>
+    [RelayCommand]
+    private async Task FindTerminalsAsync()
+    {
+        if (IsFinding) return;
+        IsFinding = true;
+        Show(false, "Looking for terminals on every network this register is on…");
+        try
+        {
+            var list = await TerminalDiscovery.ScanAsync(TimeSpan.FromSeconds(2.5));
+            DiscoveredTerminals.Clear();
+            foreach (var t in list) DiscoveredTerminals.Add(t);
+            OnPropertyChanged(nameof(HasDiscoveredTerminals));
+            if (list.Count == 0)
+            {
+                Show(true, "No terminal answered. Is the WinkPay app running on it, and is it on the same Wi-Fi / hotspot?");
+            }
+            else if (list.Count == 1)
+            {
+                UseDiscovered(list[0]);
+                Show(false, $"Found {list[0].Label} at {list[0].Host} ({list[0].Via}) — Save & reconnect to use it.");
+            }
+            else
+            {
+                Show(false, $"Found {list.Count} terminals — tap one.");
+            }
+        }
+        catch (Exception e)
+        {
+            Show(true, $"Discovery failed: {e.Message}");
+        }
+        finally
+        {
+            IsFinding = false;
+        }
+    }
+
+    [RelayCommand]
+    private void UseDiscovered(DiscoveredTerminal terminal)
+    {
+        if (terminal is null) return;
+        Mode = PosSettings.ModeJpxss;
+        TerminalHost = terminal.Host;
+        Rescan();
+    }
+
     // ----- previews -----
 
     public string TlsLabel => UseTls
@@ -178,7 +241,7 @@ public partial class SetupViewModel : ViewModelBase
 
         if (!IsHostValid())
         {
-            Show(false, "Enter the terminal's IP address, e.g. 192.168.1.234");
+            Show(false, "Enter the terminal's IP address (IPv4 or IPv6), or press Find terminals");
             return;
         }
 
@@ -199,7 +262,7 @@ public partial class SetupViewModel : ViewModelBase
 
         if (draft.LinkMode == PosSettings.ModeJpxss && !IsHostValid())
         {
-            Show(true, "Enter the terminal's IP address, e.g. 192.168.1.234");
+            Show(true, "Enter the terminal's IP address (IPv4 or IPv6), or press Find terminals");
             return;
         }
 
@@ -288,7 +351,7 @@ public partial class SetupViewModel : ViewModelBase
     {
         var s = PosSettings.Load();
         s.LinkMode = Mode;
-        s.TerminalHost = TerminalHost.Trim();
+        s.TerminalHost = PosSettings.NormalizeHost(TerminalHost);
         s.TerminalPort = ParsePort(TerminalPort, PosSettings.DefaultPxrrsPort);
         s.UseTls = UseTls;
         s.NotifyPort = ParsePort(NotifyPort, PosSettings.DefaultNotifyPort);
