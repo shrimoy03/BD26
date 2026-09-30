@@ -43,10 +43,10 @@ public partial class MainViewModel : ViewModelBase
 
     private static readonly IReadOnlyList<Product> Catalog = new List<Product>
     {
-        new("3145891313406", "Chanel Beaute", "Beauty", 50m),
-        new("3365440057838", "Ysl Cosmetics", "Beauty", 30m),
-        new("1230000456789", "Little Brown Bag Tote", "Exclusives", 38m),
-        new("7930006543210", "Valentino Donna Edp", "Beauty", 170m),
+        new("3145891313406", "Chanel Beaute", "Beauty", 500m),
+        new("3365440057838", "Ysl Cosmetics", "Beauty", 300m),
+        new("1230000456789", "Little Brown Bag Tote", "Exclusives", 380m),
+        new("7930006543210", "Valentino Donna Edp", "Beauty", 1700m),
     };
 
     private readonly ITerminalLink? _link;

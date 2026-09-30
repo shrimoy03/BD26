@@ -100,7 +100,7 @@ public partial class MainWindow : Window
         await Shot("02-scan-empty");
         PressT(vm, 5);                  // items page
         await Shot("02b-items");
-        vm.AddCatalogItemCommand.Execute(vm.CatalogItems[0]); // Chanel Beaute 50.00
+        vm.AddCatalogItemCommand.Execute(vm.CatalogItems[0]); // Chanel Beaute 500.00
         vm.CloseItemsCommand.Execute(null);
         await Shot("03-scan-item");
         PressT(vm, 1);                  // checkout
@@ -115,7 +115,7 @@ public partial class MainWindow : Window
 
         // Card flow (loyalty bypassed, like the deck's YSL sale).
         vm.NewSaleCommand.Execute(null);
-        foreach (var c in "3365440057838") vm.EntryChar(c); // Ysl Cosmetics 30.00 — a scan on the loyalty prompt bypasses it
+        foreach (var c in "3365440057838") vm.EntryChar(c); // Ysl Cosmetics 300.00 — a scan on the loyalty prompt bypasses it
         vm.EntrySubmit();
         PressT(vm, 1);                  // checkout
         PressT(vm, 1);                  // Bloomingdale's Card/Pay

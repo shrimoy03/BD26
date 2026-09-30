@@ -17,7 +17,7 @@ The register is a stage machine that walks the store flow screen for screen
    the lookup/enrolment keys are display-only; scanning a UPC or picking an
    item from Items skips the prompt and starts the sale.
 2. **Scan** — type/scan a UPC and press Enter (`3145891313406` Chanel Beaute
-   50.00, `3365440057838` Ysl Cosmetics 30.00); Delete voids the selected
+   500.00, `3365440057838` Ysl Cosmetics 300.00); Delete voids the selected
    line; T1 Checkout.
 3. **Checkout** — T1 Bloomingdale's Card / Bloomingdale's Pay,
    T8 More Payment Methods; Esc returns to merchandise.
