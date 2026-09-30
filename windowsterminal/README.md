@@ -409,6 +409,29 @@ the demo down unless the terminal is prepared:
 
    The register's subscription survives a PXRRS restart.
 
+   **Root cause of the slowness (found 2026-09-29, PXRRS 1.16.42 and
+   1.16.43_T alike):** PXRRS starts its PAX file logger at DEBUG and writes
+   every line to `/sdcard/Logger/<pkg>/log`. On Android 11+ it may not
+   (scoped storage, no `MANAGE_EXTERNAL_STORAGE`), so every write fails
+   through MediaProvider at ~40 ms each — a queue that runs *continuously*,
+   holds the process at 10–20 % CPU while idle, and stretches a 100 ms REST
+   call to 1.5–3 s whenever the register sends a burst. The logger library
+   listens for two runtime broadcasts, and the WinkPay app now sends them on
+   start and every 15 s (`link/PxrrsLogQuieter.kt`), so PXRRS is silenced
+   within seconds of every restart:
+
+   ```bash
+   adb shell am broadcast -a com.pax.action.LOGGER_MESSAGE --es level NONE -p com.pax.multilane.pxretailerrestservice
+   adb shell am broadcast -a com.pax.logger.action --ez state false -p com.pax.multilane.pxretailerrestservice
+   ```
+
+   Measured on the A380: bursts of `getVariable` went from 1.7–2.1 s per call
+   to 0.10–0.20 s the moment the level changed; after a restart with the
+   level set, idle CPU 0 % and zero failed writes. Messages already queued
+   before the change still drain (at ~50/s), so after hours at DEBUG restart
+   PXRRS once. The ask to PAX stands: do not `setLogLevel("DEBUG")` in a
+   release build, or log to the app-private directory.
+
    **PXRRS will not start after a reboot** (register shows *Connection refused
    — nothing is listening on that port*; the PxRetailerRestService screen's
    Save → Yes toasts `Failed to restart the service. Error:

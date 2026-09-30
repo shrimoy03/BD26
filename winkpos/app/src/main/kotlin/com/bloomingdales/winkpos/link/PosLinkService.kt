@@ -45,9 +45,13 @@ class PosLinkService : Service() {
         // Lets a register find this terminal by serial instead of by typed IP
         // — essential on a hotspot, where the only usable address is IPv6.
         DiscoveryResponder.start(this)
+        // PXRRS's failing file logger is the terminal's slowness; silence it
+        // from here since PAX has not (see PxrrsLogQuieter).
+        PxrrsLogQuieter.start(this)
     }
 
     override fun onDestroy() {
+        PxrrsLogQuieter.stop()
         DiscoveryResponder.stop()
         super.onDestroy()
     }
