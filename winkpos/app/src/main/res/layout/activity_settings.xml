@@ -189,6 +189,10 @@
                     android:text="palmEvBoostEnabled (low-light exposure boost)" />
 
                 <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/faceExposureAssistEnabled" style="@style/SettingsSwitch"
+                    android:text="faceExposureAssistEnabled (face exposure for backlight)" />
+
+                <androidx.appcompat.widget.SwitchCompat
                     android:id="@+id/isFrontCamera" style="@style/SettingsSwitch"
                     android:text="isFrontCamera (palm camera faces the customer)" />
 

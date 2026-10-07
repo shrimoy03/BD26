@@ -97,6 +97,7 @@ class WelcomeActivity : AppCompatActivity(), PosLink.Listener {
                 enableIR = tuning.enableIR,
                 palmFocusMaskOpacity = tuning.palmFocusMaskOpacity,
                 palmEvBoostEnabled = tuning.palmEvBoostEnabled,
+                faceExposureAssistEnabled = tuning.faceExposureAssistEnabled,
                 palmLivenessMode = tuning.palmLivenessMode,
                 palmEngineDriver = tuning.palmEngineDriver,
                 isFrontCamera = tuning.isFrontCamera,

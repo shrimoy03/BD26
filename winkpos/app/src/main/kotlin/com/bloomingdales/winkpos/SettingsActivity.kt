@@ -39,6 +39,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var debugLogging: SwitchCompat
     private lateinit var registerUrl: EditText
     private lateinit var palmEvBoostEnabled: SwitchCompat
+    private lateinit var faceExposureAssistEnabled: SwitchCompat
     private lateinit var palmLivenessMode: Spinner
     private lateinit var palmEngineDriver: Spinner
     private lateinit var isFrontCamera: SwitchCompat
@@ -72,6 +73,7 @@ class SettingsActivity : AppCompatActivity() {
         palmMfaEnabled = findViewById(R.id.palmMfaEnabled)
         debugLogging = findViewById(R.id.debugLogging)
         palmEvBoostEnabled = findViewById(R.id.palmEvBoostEnabled)
+        faceExposureAssistEnabled = findViewById(R.id.faceExposureAssistEnabled)
         palmLivenessMode = spinner(R.id.palmLivenessMode, R.array.palm_liveness_mode_options)
         palmEngineDriver = spinner(R.id.palmEngineDriver, R.array.palm_engine_driver_options)
         isFrontCamera = findViewById(R.id.isFrontCamera)
@@ -141,6 +143,7 @@ class SettingsActivity : AppCompatActivity() {
         palmMfaEnabled.isChecked = v.palmMfaEnabled
         debugLogging.isChecked = v.debugLogging
         palmEvBoostEnabled.isChecked = v.palmEvBoostEnabled
+        faceExposureAssistEnabled.isChecked = v.faceExposureAssistEnabled
         palmLivenessMode.setSelection(Tuning.LIVENESS_MODES.indexOf(v.palmLivenessMode).coerceAtLeast(0))
         palmEngineDriver.setSelection(Tuning.ENGINE_DRIVERS.indexOf(v.palmEngineDriver).coerceAtLeast(0))
         isFrontCamera.isChecked = v.isFrontCamera
@@ -179,6 +182,7 @@ class SettingsActivity : AppCompatActivity() {
                 .toFloatOrNull()?.takeIf { it in 0f..1f },
             debugLogging = debugLogging.isChecked,
             palmEvBoostEnabled = palmEvBoostEnabled.isChecked,
+            faceExposureAssistEnabled = faceExposureAssistEnabled.isChecked,
             palmLivenessMode = Tuning.LIVENESS_MODES[palmLivenessMode.selectedItemPosition],
             palmEngineDriver = Tuning.ENGINE_DRIVERS[palmEngineDriver.selectedItemPosition],
             isFrontCamera = isFrontCamera.isChecked,

@@ -41,6 +41,7 @@ object Tuning {
         val enableIR: Boolean = false,
         val palmFocusMaskOpacity: Float? = null, // null = adaptive
         val palmEvBoostEnabled: Boolean = true,  // guarded low-light exposure boost (session driver)
+        val faceExposureAssistEnabled: Boolean = false, // face AE metering + EV for backlight (SDK 1.7.12)
         val palmLivenessMode: String = "hires",  // hires | gesture | both
         val palmEngineDriver: String = "session", // session | bridge (rollback)
         val isFrontCamera: Boolean = true,       // palm camera faces the customer
@@ -72,6 +73,7 @@ object Tuning {
             enableIR = p.getBoolean("enableIR", d.enableIR),
             palmFocusMaskOpacity = s("palmFocusMaskOpacity")?.toFloatOrNull(),
             palmEvBoostEnabled = p.getBoolean("palmEvBoostEnabled", d.palmEvBoostEnabled),
+            faceExposureAssistEnabled = p.getBoolean("faceExposureAssistEnabled", d.faceExposureAssistEnabled),
             palmLivenessMode = s("palmLivenessMode")?.takeIf { it in LIVENESS_MODES } ?: d.palmLivenessMode,
             palmEngineDriver = s("palmEngineDriver")?.takeIf { it in ENGINE_DRIVERS } ?: d.palmEngineDriver,
             isFrontCamera = p.getBoolean("isFrontCamera", d.isFrontCamera),
@@ -101,6 +103,7 @@ object Tuning {
             putBoolean("enableIR", v.enableIR)
             putString("palmFocusMaskOpacity", v.palmFocusMaskOpacity?.toString())
             putBoolean("palmEvBoostEnabled", v.palmEvBoostEnabled)
+            putBoolean("faceExposureAssistEnabled", v.faceExposureAssistEnabled)
             putString("palmLivenessMode", v.palmLivenessMode)
             putString("palmEngineDriver", v.palmEngineDriver)
             putBoolean("isFrontCamera", v.isFrontCamera)
@@ -127,6 +130,7 @@ object Tuning {
         WinkPaySdk.enableIR = v.enableIR
         WinkPaySdk.palmFocusMaskOpacity = v.palmFocusMaskOpacity
         WinkPaySdk.palmEvBoostEnabled = v.palmEvBoostEnabled
+        WinkPaySdk.faceExposureAssistEnabled = v.faceExposureAssistEnabled
         WinkPaySdk.palmLivenessMode = v.palmLivenessMode
         WinkPaySdk.palmEngineDriver = v.palmEngineDriver
         WinkPaySdk.isFrontCamera = v.isFrontCamera
