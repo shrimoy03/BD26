@@ -27,6 +27,9 @@ object WinkPaymentsClient {
 
     class PaymentDeclinedException(message: String) : IOException(message)
 
+    /** The gateway's "Customer consent required." 400 on the MIT purchase. */
+    class ConsentRequiredException(message: String) : IOException(message)
+
     data class PurchaseResult(
         val transactionId: String,
         val amountCents: Int,
@@ -87,6 +90,9 @@ object WinkPaymentsClient {
                 Log.w(TAG, "purchase HTTP ${response.code} order=$orderId amount=$amountCents " +
                     "body=${text.take(500)}")
                 val reason = extractError(text)
+                if (reason?.contains("consent required", ignoreCase = true) == true) {
+                    throw ConsentRequiredException("$reason (HTTP ${response.code})")
+                }
                 throw IOException(
                     if (reason != null) "$reason (HTTP ${response.code})"
                     else "Payment failed (HTTP ${response.code})",

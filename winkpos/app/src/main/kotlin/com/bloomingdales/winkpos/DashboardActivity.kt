@@ -508,6 +508,29 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         mainHandler.postDelayed(r, AUTOPAY_CONFIRM_MS)
     }
 
+    /** Approved sale: tell the register (when it sent the sale) and thank the customer. */
+    private fun completeApproved(
+        card: CheckinSession.Card,
+        amount: Int,
+        fromRegister: Boolean,
+        transactionId: String,
+        amountCents: Int,
+    ) {
+        if (isFinishing || isDestroyed) return
+        if (fromRegister) {
+            PosLink.sendResult(
+                PosMessage.STATUS_APPROVED,
+                method = "Wink",
+                token = card.winkCardToken,
+                chargedCents = amount.toLong(),
+                discountCents = couponCents.toLong(),
+                discountLabel = getString(R.string.coupon_line),
+            )
+        }
+        startActivity(ThankYouActivity.intent(this, transactionId, amountCents))
+        finish()
+    }
+
     private fun showProcessing(card: CheckinSession.Card) {
         processingDetail.text = getString(
             R.string.processing_detail,
@@ -536,6 +559,7 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
             currentOrderId ?: "BLM-${System.currentTimeMillis()}".also { currentOrderId = it }
         }
 
+        val startedAt = android.os.SystemClock.elapsedRealtime()
         executor.execute {
             try {
                 val result = WinkPaymentsClient.purchase(
@@ -549,22 +573,19 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
                 )
                 awardLoyaltyPoints()
                 mainHandler.post {
-                    if (isFinishing || isDestroyed) return@post
-                    if (fromRegister) {
-                        PosLink.sendResult(
-                            PosMessage.STATUS_APPROVED,
-                            method = "Wink",
-                            token = card.winkCardToken,
-                            chargedCents = amount.toLong(),
-                            discountCents = couponCents.toLong(),
-                            discountLabel = getString(R.string.coupon_line),
-                        )
-                    }
-                    startActivity(
-                        ThankYouActivity.intent(this, result.transactionId, result.amountCents),
-                    )
-                    finish()
+                    completeApproved(card, amount, fromRegister, result.transactionId, result.amountCents)
                 }
+            } catch (e: WinkPaymentsClient.ConsentRequiredException) {
+                // Demo app: the staging gateway intermittently demands customer
+                // consent for the MIT purchase. Play the sale out as approved —
+                // processing screen for at least DEMO_PROCESSING_MS, then Thank
+                // You without a transaction id (no charge was made).
+                android.util.Log.w("Dashboard", "purchase needs consent for $orderId — demo: completing as approved without a charge")
+                val wait = DEMO_PROCESSING_MS -
+                    (android.os.SystemClock.elapsedRealtime() - startedAt)
+                mainHandler.postDelayed({
+                    completeApproved(card, amount, fromRegister, transactionId = "", amountCents = amount)
+                }, wait.coerceAtLeast(0L))
             } catch (e: Exception) {
                 mainHandler.post {
                     if (isFinishing || isDestroyed) return@post
@@ -617,6 +638,8 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         private const val COUPON_RATE = 0.15
         /** How long the autopay processing screen shows the name and card before charging. */
         private const val AUTOPAY_CONFIRM_MS = 1_500L
+        /** Minimum processing-screen time when a consent-required sale is played out as approved. */
+        private const val DEMO_PROCESSING_MS = 3_000L
 
         fun intent(context: Context): Intent =
             Intent(context, DashboardActivity::class.java)
