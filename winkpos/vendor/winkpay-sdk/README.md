@@ -5,7 +5,7 @@ WinkPay is a biometric (face + palm) payment SDK for Android POS applications. T
 You add a single dependency:
 
 ```
-com.wink:winkpay-sdk:1.7.14
+com.wink:winkpay-sdk:1.7.12
 ```
 
 It is delivered as a local Maven repository (a directory tree, shipped in the SDK zip) that contains **two** artifacts: `com.wink:winkpay-sdk` and its palm-capture engine `com.palmid:palmid-core`. You only declare `winkpay-sdk` — the palm engine resolves **transitively** from the same repo (see §2). There is no second dependency line to add.
@@ -80,7 +80,7 @@ android {
 }
 
 dependencies {
-    implementation("com.wink:winkpay-sdk:1.7.14")
+    implementation("com.wink:winkpay-sdk:1.7.12")
 }
 ```
 
