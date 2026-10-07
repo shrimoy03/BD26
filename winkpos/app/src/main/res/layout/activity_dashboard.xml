@@ -558,7 +558,9 @@
             <!-- Register mode: the payment is confirmed on one big card — the
                  item detail lives on the register, so only amount + card + Pay
                  show here. The alias overlay sits over the art's baked-in
-                 CUSTOMER NAME line. -->
+                 CUSTOMER NAME line. In check-in mode the block takes the
+                 page's leftover height and the card shrinks to fit it, so a
+                 discount line can never push the total off the bottom. -->
             <FrameLayout
                 android:id="@+id/bigCardBlock"
                 android:layout_width="match_parent"
@@ -566,8 +568,15 @@
                 android:layout_marginTop="10dp"
                 android:visibility="gone">
 
+            <FrameLayout
+                android:id="@+id/bigCard"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|center_horizontal">
+
                 <ImageView
-                    android:layout_width="match_parent"
+                    android:id="@+id/bigCardArt"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:adjustViewBounds="true"
                     android:contentDescription="@string/card_brand_line"
@@ -575,6 +584,7 @@
                     android:src="@drawable/totl_card_credit" />
 
                 <LinearLayout
+                    android:id="@+id/bigCardOverlay"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="bottom|start"
@@ -601,6 +611,7 @@
                         android:textColor="#BBBBBB"
                         android:textSize="12sp" />
                 </LinearLayout>
+            </FrameLayout>
             </FrameLayout>
 
             <!-- Check-in mode: the customer is identified and waiting for the
@@ -692,6 +703,7 @@
             <!-- Flexible gap: absorbs leftover height so payment + Pay pin
                  to the bottom without any scrolling. -->
             <View
+                android:id="@+id/flexGap"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1" />

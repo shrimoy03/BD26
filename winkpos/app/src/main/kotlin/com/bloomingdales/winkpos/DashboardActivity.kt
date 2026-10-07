@@ -129,6 +129,7 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         cartBadge = findViewById(R.id.cartBadge)
         payButton = findViewById(R.id.payButton)
         orderTitle = findViewById(R.id.orderTitle)
+        scaleCardOverlayWithArt()
 
         findViewById<TextView>(R.id.greetingText).text =
             getString(R.string.hello_name, CheckinSession.firstName.ifEmpty { "there" })
@@ -370,6 +371,16 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
             parent.removeView(block)
             parent.addView(block, parent.indexOfChild(anchor))
         }
+        // Check-in: the card takes the leftover height instead of the gap and
+        // shrinks to fit it, so the totals (and a discount line) always fit.
+        val card = findViewById<View>(R.id.bigCardBlock)
+        val gap = findViewById<View>(R.id.flexGap)
+        (card.layoutParams as LinearLayout.LayoutParams).apply {
+            height = if (checkin) 0 else LinearLayout.LayoutParams.WRAP_CONTENT
+            weight = if (checkin) 1f else 0f
+        }
+        (gap.layoutParams as LinearLayout.LayoutParams).weight = if (checkin) 0f else 1f
+        card.requestLayout()
         findViewById<View>(R.id.totalsDivider).visibility = if (checkin) View.VISIBLE else View.GONE
         findViewById<View>(R.id.subtotalRow).visibility = if (checkin) View.VISIBLE else View.GONE
         val label = findViewById<TextView>(R.id.totalLabel)
@@ -384,6 +395,32 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
             label.textSize = 20f
             value.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
             value.textSize = 20f
+        }
+    }
+
+    /**
+     * The alias overlay hides the art's baked-in CUSTOMER NAME line using
+     * fixed dp margins; when check-in shrinks the card to fit, shrink the
+     * overlay about the card's bottom-left corner by the same ratio.
+     */
+    private fun scaleCardOverlayWithArt() {
+        val art = findViewById<ImageView>(R.id.bigCardArt)
+        val overlay = findViewById<View>(R.id.bigCardOverlay)
+        val block = findViewById<View>(R.id.bigCardBlock)
+        art.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            overlay.post {
+                val fullWidth = minOf(art.drawable?.intrinsicWidth ?: 0, block.width)
+                val ratio = if (fullWidth > 0 && art.width > 0) {
+                    (art.width.toFloat() / fullWidth).coerceAtMost(1f)
+                } else 1f
+                val lp = overlay.layoutParams as ViewGroup.MarginLayoutParams
+                overlay.pivotX = 0f
+                overlay.pivotY = overlay.height.toFloat()
+                overlay.scaleX = ratio
+                overlay.scaleY = ratio
+                overlay.translationX = -(1f - ratio) * lp.marginStart
+                overlay.translationY = (1f - ratio) * lp.bottomMargin
+            }
         }
     }
 
