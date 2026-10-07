@@ -1,6 +1,7 @@
 package com.bloomingdales.winkpos
 
 import android.util.Base64
+import android.util.Log
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -21,6 +22,8 @@ import java.util.concurrent.TimeUnit
  * Blocking — call from a background thread.
  */
 object WinkPaymentsClient {
+
+    private const val TAG = "WinkPayments"
 
     class PaymentDeclinedException(message: String) : IOException(message)
 
@@ -79,10 +82,19 @@ object WinkPaymentsClient {
         client.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                throw IOException(extractError(text) ?: "Payment failed (HTTP ${response.code})")
+                // The gateway's reason is only in the body — log it so a
+                // failed charge is diagnosable from logcat.
+                Log.w(TAG, "purchase HTTP ${response.code} order=$orderId amount=$amountCents " +
+                    "body=${text.take(500)}")
+                val reason = extractError(text)
+                throw IOException(
+                    if (reason != null) "$reason (HTTP ${response.code})"
+                    else "Payment failed (HTTP ${response.code})",
+                )
             }
             val json = JSONObject(text)
             if (json.has("isSuccess") && !json.optBoolean("isSuccess", true)) {
+                Log.w(TAG, "purchase declined order=$orderId amount=$amountCents body=${text.take(500)}")
                 throw PaymentDeclinedException(
                     extractError(text) ?: "Payment could not be completed",
                 )
@@ -99,9 +111,11 @@ object WinkPaymentsClient {
         }
     }
 
+    /** Wink services differ in casing ("message" vs "Message"). */
     private fun extractError(bodyText: String): String? = try {
         val json = JSONObject(bodyText)
         json.optString("message").takeIf { it.isNotBlank() }
+            ?: json.optString("Message").takeIf { it.isNotBlank() }
             ?: json.optJSONObject("paymentExternalResponse")
                 ?.optString("winkErrorMessage")?.takeIf { it.isNotBlank() }
             ?: json.optString("error").takeIf { it.isNotBlank() }
