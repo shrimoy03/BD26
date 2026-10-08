@@ -508,6 +508,41 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         mainHandler.postDelayed(r, AUTOPAY_CONFIRM_MS)
     }
 
+    /**
+     * Customer-initiated card sale with the Wink seed from a face check-in;
+     * the merchant-initiated purchase when there is no seed (palm check-in).
+     * If the gateway refuses the sale outright — a non-2xx answer, so nothing
+     * was charged (e.g. the seed has expired since the scan) — the purchase
+     * runs instead. Network failures and declines are not retried. Blocking.
+     */
+    private fun charge(card: CheckinSession.Card, amount: Int, orderId: String): WinkPaymentsClient.PurchaseResult {
+        val description = "Bloomingdale's in-store purchase"
+        val seed = CheckinSession.winkSeed
+        if (seed != null) {
+            try {
+                return WinkPaymentsClient.sale(
+                    env = BuildConfig.WINK_ENV,
+                    merchantClientSecret = BuildConfig.WINK_MERCHANT_CLIENT_SECRET,
+                    winkSeed = seed,
+                    winkCardToken = card.winkCardToken,
+                    amountCents = amount,
+                    orderId = orderId,
+                    description = description,
+                )
+            } catch (e: WinkPaymentsClient.GatewayRejectedException) {
+                android.util.Log.w("Dashboard", "card sale refused for $orderId (${e.message}) — falling back to purchase")
+            }
+        }
+        return WinkPaymentsClient.purchase(
+            env = BuildConfig.WINK_ENV,
+            merchantClientSecret = BuildConfig.WINK_MERCHANT_CLIENT_SECRET,
+            winkCardToken = card.winkCardToken,
+            amountCents = amount,
+            orderId = orderId,
+            description = description,
+        )
+    }
+
     /** Approved sale: tell the register (when it sent the sale) and thank the customer. */
     private fun completeApproved(
         card: CheckinSession.Card,
@@ -562,15 +597,7 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
         val startedAt = android.os.SystemClock.elapsedRealtime()
         executor.execute {
             try {
-                val result = WinkPaymentsClient.purchase(
-                    env = BuildConfig.WINK_ENV,
-                    merchantClientSecret = BuildConfig.WINK_MERCHANT_CLIENT_SECRET,
-                    winkCardToken = card.winkCardToken,
-                    amountCents = amount,
-                    currencyCode = "USD",
-                    orderId = orderId,
-                    description = "Bloomingdale's in-store purchase",
-                )
+                val result = charge(card, amount, orderId)
                 awardLoyaltyPoints()
                 mainHandler.post {
                     completeApproved(card, amount, fromRegister, result.transactionId, result.amountCents)

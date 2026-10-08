@@ -30,6 +30,13 @@ object CheckinSession {
         private set
     var accessToken: String? = null
         private set
+    /**
+     * winkAuth.winkSeed from the login response — authorises the
+     * customer-initiated card sale. Face check-ins carry it; the SDK sends
+     * palm check-ins with winkAuth = null, so palm has none.
+     */
+    var winkSeed: String? = null
+        private set
     var cards: List<Card> = emptyList()
         private set
 
@@ -62,6 +69,8 @@ object CheckinSession {
         this.accessToken = accessToken
 
         val root = JSONObject(loginResponseJson)
+        winkSeed = root.optJSONObject("winkAuth")?.optString("winkSeed")
+            ?.takeIf { it.isNotBlank() && it != "null" }
         val details = root.optJSONObject("userPaymentDetails")
         val user = details?.optJSONObject("user")
         firstName = user?.optString("firstName")
@@ -106,6 +115,7 @@ object CheckinSession {
         firstName = ""
         winkTag = null
         accessToken = null
+        winkSeed = null
         cards = emptyList()
         oktaUserId = null
     }
