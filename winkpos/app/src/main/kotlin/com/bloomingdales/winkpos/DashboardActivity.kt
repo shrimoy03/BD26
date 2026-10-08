@@ -518,6 +518,7 @@ class DashboardActivity : AppCompatActivity(), PosLink.Listener {
     private fun charge(card: CheckinSession.Card, amount: Int, orderId: String): WinkPaymentsClient.PurchaseResult {
         val description = "Bloomingdale's in-store purchase"
         val seed = CheckinSession.winkSeed
+        android.util.Log.i("Dashboard", "charging $orderId via ${if (seed != null) "card sale (Wink seed)" else "purchase (no Wink seed)"}")
         if (seed != null) {
             try {
                 return WinkPaymentsClient.sale(
