@@ -88,13 +88,6 @@ class SettingsActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.saveButton).setOnClickListener { save() }
         findViewById<Button>(R.id.closeButton).setOnClickListener { finish() }
-        findViewById<Button>(R.id.resetButton).setOnClickListener {
-            Tuning.reset(this)
-            val defaults = Tuning.load(this)
-            Tuning.applyLive(defaults)
-            bind(defaults)
-            Toast.makeText(this, R.string.settings_reset, Toast.LENGTH_SHORT).show()
-        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

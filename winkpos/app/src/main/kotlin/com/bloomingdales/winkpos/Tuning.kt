@@ -118,10 +118,6 @@ object Tuning {
     val ENGINE_DRIVERS = listOf("session", "bridge")
     val AUTOPAY_MODES = listOf("off", "card", "always")
 
-    fun reset(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
-    }
-
     /** Push the SDK-level knobs onto the live SDK singleton. */
     fun applyLive(v: Values) {
         WinkPaySdk.palmMfaEnabled = v.palmMfaEnabled
