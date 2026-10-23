@@ -21,8 +21,8 @@ android {
         applicationId = "com.bloomingdales.winkpos"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1.0"
 
         // 64-bit POS hardware; armeabi-v7a fleets run face-only (palm gates off).
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
@@ -85,6 +85,15 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+    }
+
+    // Name APKs for distribution, e.g. winkpos-1.1.0-b2-debug.apk.
+    applicationVariants.all {
+        val variant = this
+        outputs.all {
+            (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName =
+                "winkpos-${variant.versionName}-b${variant.versionCode}-${variant.buildType.name}.apk"
+        }
     }
 }
 
